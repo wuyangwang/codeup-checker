@@ -2,6 +2,7 @@ package codeup
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 )
@@ -9,15 +10,19 @@ import (
 func ScanRepositories(ctx context.Context, client *CodeupClient, cfg *Config) ([]Candidate, error) {
 	var (
 		mu         sync.Mutex
-		wg         sync.WaitGroup
 		candidates []Candidate
 		errs       []error
 	)
 
+	scanSem := make(chan struct{}, cfg.GetScanConcurrency())
+	var wg sync.WaitGroup
+
 	for _, repo := range cfg.Repositories {
 		wg.Add(1)
+		scanSem <- struct{}{}
 		go func(r RepoConfig) {
 			defer wg.Done()
+			defer func() { <-scanSem }()
 
 			select {
 			case <-ctx.Done():
@@ -52,7 +57,7 @@ func ScanRepositories(ctx context.Context, client *CodeupClient, cfg *Config) ([
 	wg.Wait()
 
 	if len(errs) > 0 {
-		return candidates, fmt.Errorf("扫描完成但有 %d 个错误: %v", len(errs), errs[0])
+		return candidates, fmt.Errorf("扫描完成但有 %d 个错误: %w", len(errs), errors.Join(errs...))
 	}
 	return candidates, nil
 }
@@ -68,6 +73,13 @@ func listMergedBranches(ctx context.Context, client *CodeupClient, repo RepoConf
 	page := int64(1)
 	pageSize := int64(100)
 	targetBranch := cfg.GetTargetBranch()
+
+	targetCommit, err := fetchTargetCommit(ctx, client, repo.Identity(), targetBranch)
+	if err != nil {
+		return nil, fmt.Errorf("获取目标分支 %s: %w", targetBranch, err)
+	}
+
+	compareSem := make(chan struct{}, cfg.GetCompareConcurrency())
 
 	for {
 		select {
@@ -97,8 +109,10 @@ func listMergedBranches(ctx context.Context, client *CodeupClient, repo RepoConf
 			}
 
 			wg.Add(1)
+			compareSem <- struct{}{}
 			go func(b Branch) {
 				defer wg.Done()
+				defer func() { <-compareSem }()
 
 				select {
 				case <-ctx.Done():
@@ -107,7 +121,7 @@ func listMergedBranches(ctx context.Context, client *CodeupClient, repo RepoConf
 				default:
 				}
 
-				merged, err := isBranchMerged(ctx, client, repo.Identity(), b.Name, targetBranch)
+				merged, err := isBranchMerged(ctx, client, repo.Identity(), b, targetBranch, targetCommit)
 				resultCh <- branchResult{name: b.Name, merged: merged, err: err}
 			}(branch)
 		}
@@ -135,6 +149,17 @@ func listMergedBranches(ctx context.Context, client *CodeupClient, repo RepoConf
 	}
 
 	return mergedBranches, nil
+}
+
+func fetchTargetCommit(ctx context.Context, client *CodeupClient, repoIdentity, targetBranch string) (string, error) {
+	branch, err := client.GetBranch(ctx, repoIdentity, targetBranch)
+	if err != nil {
+		return "", err
+	}
+	if branch.Commit == nil {
+		return "", nil
+	}
+	return branch.Commit.ID, nil
 }
 
 func isProtectedBranch(name string, branch Branch) bool {
@@ -174,30 +199,16 @@ func matchPattern(pattern, name string) bool {
 	return false
 }
 
-func isBranchMerged(ctx context.Context, client *CodeupClient, repositoryIdentity, branchName, targetBranch string) (bool, error) {
-	// targetBranch->branch: 分支有而 targetBranch 没有的提交
-	resp, err := client.GetCompareDetail(ctx, repositoryIdentity, targetBranch, branchName)
+func isBranchMerged(ctx context.Context, client *CodeupClient, repositoryIdentity string, branch Branch, targetBranch, targetCommit string) (bool, error) {
+	if branch.Commit != nil && branch.Commit.ID == targetCommit {
+		return false, nil
+	}
+
+	resp, err := client.GetCompareDetail(ctx, repositoryIdentity, targetBranch, branch.Name)
 	if err != nil {
 		return false, fmt.Errorf("比较分支: %w", err)
 	}
 	if resp == nil || len(resp.Commits) > 0 {
-		return false, nil
-	}
-
-	// 获取 targetBranch 和分支的 commit SHA
-	targetBranchInfo, err := client.GetBranch(ctx, repositoryIdentity, targetBranch)
-	if err != nil {
-		return false, fmt.Errorf("获取 %s 分支: %w", targetBranch, err)
-	}
-
-	branch, err := client.GetBranch(ctx, repositoryIdentity, branchName)
-	if err != nil {
-		return false, fmt.Errorf("获取分支: %w", err)
-	}
-
-	// 如果 commit SHA 相同，说明分支是新创建的，没有自己的提交
-	if targetBranchInfo.Commit != nil && branch.Commit != nil &&
-		targetBranchInfo.Commit.ID == branch.Commit.ID {
 		return false, nil
 	}
 

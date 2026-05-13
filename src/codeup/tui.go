@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbletea"
@@ -15,18 +16,19 @@ type Mode int
 const (
 	ModeNormal Mode = iota
 	ModeConfirm
+	ModeDeleting
 )
 
 type keyMap struct {
-	Up       key.Binding
-	Down     key.Binding
-	Space    key.Binding
-	Select   key.Binding
-	Quit     key.Binding
-	Confirm  key.Binding
-	Execute  key.Binding
-	Open     key.Binding
-	Esc      key.Binding
+	Up      key.Binding
+	Down    key.Binding
+	Space   key.Binding
+	Select  key.Binding
+	Quit    key.Binding
+	Confirm key.Binding
+	Execute key.Binding
+	Open    key.Binding
+	Esc     key.Binding
 }
 
 var keys = keyMap{
@@ -74,6 +76,18 @@ type TUIOptions struct {
 	DryRun bool
 }
 
+type DeletionProgressMsg struct {
+	Total     int
+	Completed int
+	Current   string
+	Success   bool
+	Error     error
+}
+
+type DeletionDoneMsg struct {
+	Result Result
+}
+
 type Model struct {
 	candidates  []Candidate
 	selected    map[int]bool
@@ -83,6 +97,9 @@ type Model struct {
 	quitting    bool
 	allSelected bool
 	opts        TUIOptions
+	deleting    int
+	deleteTotal int
+	deleteDone  bool
 }
 
 func NewModel(candidates []Candidate, opts TUIOptions) Model {
@@ -105,16 +122,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, keys.Quit):
-			m.quitting = true
-			return m, tea.Quit
+			if m.mode != ModeDeleting {
+				m.quitting = true
+				return m, tea.Quit
+			}
 
 		case key.Matches(msg, keys.Up):
-			if m.cursor > 0 {
+			if m.mode == ModeNormal && m.cursor > 0 {
 				m.cursor--
 			}
 
 		case key.Matches(msg, keys.Down):
-			if m.cursor < len(m.candidates)-1 {
+			if m.mode == ModeNormal && m.cursor < len(m.candidates)-1 {
 				m.cursor++
 			}
 
@@ -149,23 +168,53 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.mode = ModeConfirm
 				}
 			} else if m.mode == ModeConfirm {
-				return m.executeDeletion()
+				return m.startDeletion()
 			}
 
 		case key.Matches(msg, keys.Esc):
 			if m.mode == ModeConfirm {
 				m.mode = ModeNormal
 			}
-
 		case key.Matches(msg, keys.Open):
 			OpenConfigDir()
 		}
+
+	case DeletionProgressMsg:
+		m.deleting = msg.Completed
+		m.deleteTotal = msg.Total
+		return m, nil
+
+	case DeletionDoneMsg:
+		m.result = msg.Result
+		m.mode = ModeNormal
+		m.deleteDone = true
+
+		successSet := make(map[string]bool)
+		for _, c := range msg.Result.Success {
+			successSet[c.RepoName+":"+c.BranchName] = true
+		}
+
+		newCandidates := make([]Candidate, 0)
+		for _, candidate := range m.candidates {
+			key := candidate.RepoName + ":" + candidate.BranchName
+			if !successSet[key] {
+				newCandidates = append(newCandidates, candidate)
+			}
+		}
+
+		m.candidates = newCandidates
+		m.selected = make(map[int]bool)
+		m.cursor = 0
+		m.allSelected = false
+		m.deleting = 0
+		m.deleteTotal = 0
+		return m, nil
 	}
 
 	return m, nil
 }
 
-func (m Model) executeDeletion() (tea.Model, tea.Cmd) {
+func (m Model) startDeletion() (tea.Model, tea.Cmd) {
 	var toDelete []Candidate
 	for i, selected := range m.selected {
 		if selected {
@@ -173,33 +222,62 @@ func (m Model) executeDeletion() (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// 调用实际的删除函数
-	result := executeDeletions(m.opts, toDelete)
+	m.mode = ModeDeleting
+	m.deleteTotal = len(toDelete)
+	m.deleting = 0
 
-	m.result = result
-	m.mode = ModeNormal
+	return m, runDeletionAsync(m.opts, toDelete)
+}
 
-	// 构建成功删除的集合
-	successSet := make(map[string]bool)
-	for _, c := range result.Success {
-		successSet[c.RepoName+":"+c.BranchName] = true
-	}
+func runDeletionAsync(opts TUIOptions, toDelete []Candidate) tea.Cmd {
+	return func() tea.Msg {
+		result := Result{}
+		semaphore := make(chan struct{}, 5)
+		var mu sync.Mutex
+		completed := 0
 
-	// 只移除成功删除的分支
-	newCandidates := make([]Candidate, 0)
-	for _, candidate := range m.candidates {
-		key := candidate.RepoName + ":" + candidate.BranchName
-		if !successSet[key] {
-			newCandidates = append(newCandidates, candidate)
+		var wg sync.WaitGroup
+		for _, candidate := range toDelete {
+			wg.Add(1)
+			semaphore <- struct{}{}
+			go func(c Candidate) {
+				defer wg.Done()
+				defer func() { <-semaphore }()
+
+				select {
+				case <-opts.Ctx.Done():
+					mu.Lock()
+					result.Failed = append(result.Failed, FailedDeletion{Candidate: c, Error: opts.Ctx.Err()})
+					completed++
+					mu.Unlock()
+					return
+				default:
+				}
+
+				if opts.DryRun {
+					mu.Lock()
+					result.Success = append(result.Success, c)
+					completed++
+					mu.Unlock()
+					return
+				}
+
+				err := opts.Client.DeleteBranch(opts.Ctx, c.RepoID, c.BranchName)
+
+				mu.Lock()
+				if err != nil {
+					result.Failed = append(result.Failed, FailedDeletion{Candidate: c, Error: err})
+				} else {
+					result.Success = append(result.Success, c)
+				}
+				completed++
+				mu.Unlock()
+			}(candidate)
 		}
+
+		wg.Wait()
+		return DeletionDoneMsg{Result: result}
 	}
-
-	m.candidates = newCandidates
-	m.selected = make(map[int]bool)
-	m.cursor = 0
-	m.allSelected = false
-
-	return m, nil
 }
 
 func (m Model) View() string {
@@ -218,7 +296,7 @@ func (m Model) View() string {
 
 	for i, candidate := range m.candidates {
 		cursor := " "
-		if m.cursor == i {
+		if m.cursor == i && m.mode == ModeNormal {
 			cursor = ">"
 		}
 
@@ -228,8 +306,8 @@ func (m Model) View() string {
 		}
 
 		line := fmt.Sprintf("%s [%s] %s: %s", cursor, checked, candidate.RepoName, candidate.BranchName)
-		
-		if m.cursor == i {
+
+		if m.cursor == i && m.mode == ModeNormal {
 			lineStyle := lipgloss.NewStyle().
 				Foreground(lipgloss.Color("205")).
 				Bold(true)
@@ -253,7 +331,7 @@ func (m Model) View() string {
 		s.WriteString("\n")
 		s.WriteString(helpStyle.Render("  A: 全选/反选  D: 确认删除  O: 打开配置目录  Q: 退出"))
 		s.WriteString("\n")
-		
+
 		selectedCount := 0
 		for _, selected := range m.selected {
 			if selected {
@@ -268,6 +346,22 @@ func (m Model) View() string {
 			s.WriteString("\n")
 		}
 
+		if m.deleteDone {
+			doneStyle := lipgloss.NewStyle().
+				Foreground(lipgloss.Color("10")).
+				Bold(true)
+			s.WriteString(doneStyle.Render(fmt.Sprintf("\n删除完成: 成功 %d, 失败 %d",
+				len(m.result.Success), len(m.result.Failed))))
+			s.WriteString("\n")
+		}
+
+		if m.deleteDone || m.deleteTotal > 0 {
+			reqStyle := lipgloss.NewStyle().
+				Foreground(lipgloss.Color("241"))
+			s.WriteString(reqStyle.Render(fmt.Sprintf("HTTP 请求: %d", m.opts.Client.RequestCount())))
+			s.WriteString("\n")
+		}
+
 	case ModeConfirm:
 		confirmStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("205")).
@@ -278,6 +372,22 @@ func (m Model) View() string {
 		s.WriteString(confirmStyle.Render("按 D 执行删除，按 ESC 取消"))
 		s.WriteString("\n")
 
+	case ModeDeleting:
+		progressStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("205")).
+			Bold(true)
+		barWidth := 40
+		progress := float64(m.deleting) / float64(m.deleteTotal)
+		filled := int(progress * float64(barWidth))
+
+		bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+		s.WriteString(progressStyle.Render(fmt.Sprintf("删除进度: [%s] %d/%d", bar, m.deleting, m.deleteTotal)))
+		s.WriteString("\n")
+
+		reqStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241"))
+		s.WriteString(reqStyle.Render(fmt.Sprintf("HTTP 请求: %d", m.opts.Client.RequestCount())))
+		s.WriteString("\n")
 	}
 
 	return s.String()
@@ -285,12 +395,12 @@ func (m Model) View() string {
 
 func StartTUI(candidates []Candidate, opts TUIOptions) (Result, error) {
 	p := tea.NewProgram(NewModel(candidates, opts))
-	
+
 	finalModel, err := p.Run()
 	if err != nil {
 		return Result{}, fmt.Errorf("运行 TUI 失败: %w", err)
 	}
-	
+
 	m := finalModel.(Model)
 	return m.result, nil
 }

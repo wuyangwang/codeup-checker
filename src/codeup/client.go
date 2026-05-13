@@ -8,16 +8,18 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
 const codeupBaseURL = "https://openapi-rdc.aliyuncs.com"
 
 type CodeupClient struct {
-	baseURL string
-	orgID   string
-	token   string
-	http    *http.Client
+	baseURL    string
+	orgID      string
+	token      string
+	http       *http.Client
+	requestCnt atomic.Int64
 }
 
 type Repository struct {
@@ -112,6 +114,10 @@ func (c *CodeupClient) DeleteBranch(ctx context.Context, repositoryIdentity, bra
 	return c.doJSON(ctx, http.MethodDelete, path, nil, nil)
 }
 
+func (c *CodeupClient) RequestCount() int64 {
+	return c.requestCnt.Load()
+}
+
 func (c *CodeupClient) orgPath(parts ...string) string {
 	pathParts := []string{"oapi", "v1", "codeup", "organizations", c.orgID}
 	pathParts = append(pathParts, parts...)
@@ -125,6 +131,8 @@ func (c *CodeupClient) repoPath(repositoryIdentity string, parts ...string) stri
 }
 
 func (c *CodeupClient) doJSON(ctx context.Context, method, path string, query url.Values, out any) error {
+	c.requestCnt.Add(1)
+
 	reqURL, err := url.Parse(c.baseURL)
 	if err != nil {
 		return err

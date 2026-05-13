@@ -122,6 +122,8 @@ func main() {
 		codeup.Fatal("TUI 错误: %v", err)
 	}
 
+	fmt.Printf("\nHTTP 请求总数: %d\n", client.RequestCount())
+
 	if len(result.Success) == 0 && len(result.Failed) == 0 {
 		fmt.Println("未选择要删除的分支。")
 		return

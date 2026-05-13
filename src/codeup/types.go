@@ -6,6 +6,10 @@ type Config struct {
 	TargetBranch    string       `json:"targetBranch,omitempty" yaml:"targetBranch,omitempty"`
 	Repositories    []RepoConfig `json:"repositories" yaml:"repositories"`
 	ExcludePatterns []string     `json:"excludePatterns,omitempty" yaml:"excludePatterns,omitempty"`
+	// ScanConcurrency 仓库扫描并发数（默认 5）
+	ScanConcurrency int `json:"scanConcurrency,omitempty" yaml:"scanConcurrency,omitempty"`
+	// CompareConcurrency 分支比较并发数（默认 10）
+	CompareConcurrency int `json:"compareConcurrency,omitempty" yaml:"compareConcurrency,omitempty"`
 }
 
 func (c Config) GetTargetBranch() string {
@@ -13,6 +17,20 @@ func (c Config) GetTargetBranch() string {
 		return c.TargetBranch
 	}
 	return "master"
+}
+
+func (c Config) GetScanConcurrency() int {
+	if c.ScanConcurrency > 0 {
+		return c.ScanConcurrency
+	}
+	return 5
+}
+
+func (c Config) GetCompareConcurrency() int {
+	if c.CompareConcurrency > 0 {
+		return c.CompareConcurrency
+	}
+	return 10
 }
 
 type RepoConfig struct {
