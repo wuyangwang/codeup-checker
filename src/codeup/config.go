@@ -76,9 +76,6 @@ access_token: ""
 # 匹配的分支不会被扫描和删除
 exclude_patterns:
   - "feature/*"
-  - "bugfix/*"
-  - "hotfix/*"
-  - "release/*"
 
 # 仓库列表
 repositories:
