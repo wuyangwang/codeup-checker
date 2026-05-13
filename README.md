@@ -27,15 +27,6 @@ go build -o codeup-checker ./cmd/codeup-checker/
 
 ## 配置
 
-### 方式一：环境变量（推荐）
-
-```bash
-export CODEUP_ORG_ID="your_org_id"
-export CODEUP_ACCESS_TOKEN="your_token"
-```
-
-### 方式二：配置文件
-
 首次运行会自动创建配置文件 `~/.config/codeup-checker/config.yaml`：
 
 ```yaml
@@ -149,6 +140,8 @@ go mod tidy
 ## API 文档
 
 ### Codeup OpenAPI
+
+文档：https://help.aliyun.com/zh/yunxiao/developer-reference/getcompare
 
 项目使用 Codeup OpenAPI 进行仓库和分支管理：
 
