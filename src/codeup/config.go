@@ -82,15 +82,7 @@ excludePatterns:
 
 # 仓库列表
 repositories:
-  # 方式一：使用仓库名称
-  - name: "your-repo-name"
-  
-  # 方式二：使用仓库 ID（更稳定）
-  # - id: "12345678"
-  
-  # 方式三：同时指定 ID 和名称
-  # - id: "12345678"
-  #   name: "my-repo"
+  - name: your-repo-name
 `
 	
 	if err := os.WriteFile(path, []byte(defaultConfig), 0644); err != nil {

@@ -28,6 +28,11 @@ func main() {
 			codeup.Fatal("创建默认配置文件失败: %v", err)
 		}
 		
+		cfg, err := codeup.LoadConfig(cfgPath)
+		if err != nil {
+			codeup.Fatal("加载默认配置失败: %v", err)
+		}
+		
 		reader := bufio.NewReader(os.Stdin)
 		
 		fmt.Println("请输入以下配置信息（直接回车跳过）：")
@@ -41,25 +46,26 @@ func main() {
 		token, _ := reader.ReadString('\n')
 		token = strings.TrimSpace(token)
 		
-		fmt.Println("仓库名称（多个仓库用逗号分隔，如: repo1,repo2）：")
-		fmt.Print("仓库列表: ")
+		fmt.Printf("仓库名称 (多个用逗号分隔, 默认: %s): ", cfg.Repositories[0].Name)
 		reposInput, _ := reader.ReadString('\n')
 		reposInput = strings.TrimSpace(reposInput)
 		
-		var repos []codeup.RepoConfig
 		if reposInput != "" {
+			var repos []codeup.RepoConfig
 			for _, name := range strings.Split(reposInput, ",") {
 				name = strings.TrimSpace(name)
 				if name != "" {
 					repos = append(repos, codeup.RepoConfig{Name: name})
 				}
 			}
+			cfg.Repositories = repos
 		}
 		
-		cfg := &codeup.Config{
-			OrganizationId: orgId,
-			AccessToken:    token,
-			Repositories:   repos,
+		if orgId != "" {
+			cfg.OrganizationId = orgId
+		}
+		if token != "" {
+			cfg.AccessToken = token
 		}
 		
 		if err := codeup.SaveConfig(cfgPath, cfg); err != nil {
