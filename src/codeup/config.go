@@ -72,6 +72,9 @@ organization_id: ""
 # 访问令牌（可选，优先使用环境变量 CODEUP_ACCESS_TOKEN）
 access_token: ""
 
+# 目标分支（默认 master，用于判断分支是否已合并）
+target_branch: "master"
+
 # 排除的分支模式（支持通配符 *）
 # 匹配的分支不会被扫描和删除
 exclude_patterns:

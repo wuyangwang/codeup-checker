@@ -3,8 +3,16 @@ package codeup
 type Config struct {
 	OrganizationId  string       `json:"organization_id"`
 	AccessToken     string       `json:"access_token"`
+	TargetBranch    string       `json:"target_branch,omitempty"`
 	Repositories    []RepoConfig `json:"repositories"`
 	ExcludePatterns []string     `json:"exclude_patterns,omitempty"`
+}
+
+func (c Config) GetTargetBranch() string {
+	if c.TargetBranch != "" {
+		return c.TargetBranch
+	}
+	return "master"
 }
 
 type RepoConfig struct {

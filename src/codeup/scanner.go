@@ -29,7 +29,7 @@ func ScanRepositories(ctx context.Context, client *CodeupClient, cfg *Config) ([
 			}
 
 			fmt.Printf("正在检查仓库: %s\n", r.DisplayName())
-			branches, err := listMergedBranches(ctx, client, r, cfg.ExcludePatterns)
+			branches, err := listMergedBranches(ctx, client, r, cfg)
 			if err != nil {
 				mu.Lock()
 				errs = append(errs, fmt.Errorf("扫描 %s: %w", r.DisplayName(), err))
@@ -63,10 +63,11 @@ type branchResult struct {
 	err    error
 }
 
-func listMergedBranches(ctx context.Context, client *CodeupClient, repo RepoConfig, excludePatterns []string) ([]string, error) {
+func listMergedBranches(ctx context.Context, client *CodeupClient, repo RepoConfig, cfg *Config) ([]string, error) {
 	var mergedBranches []string
 	page := int64(1)
 	pageSize := int64(100)
+	targetBranch := cfg.GetTargetBranch()
 
 	for {
 		select {
@@ -91,7 +92,7 @@ func listMergedBranches(ctx context.Context, client *CodeupClient, repo RepoConf
 			if isProtectedBranch(branch.Name, branch) {
 				continue
 			}
-			if isExcludedBranch(branch.Name, excludePatterns) {
+			if isExcludedBranch(branch.Name, cfg.ExcludePatterns) {
 				continue
 			}
 
@@ -106,7 +107,7 @@ func listMergedBranches(ctx context.Context, client *CodeupClient, repo RepoConf
 				default:
 				}
 
-				merged, err := isBranchMerged(ctx, client, repo.Identity(), b.Name)
+				merged, err := isBranchMerged(ctx, client, repo.Identity(), b.Name, targetBranch)
 				resultCh <- branchResult{name: b.Name, merged: merged, err: err}
 			}(branch)
 		}
@@ -173,9 +174,9 @@ func matchPattern(pattern, name string) bool {
 	return false
 }
 
-func isBranchMerged(ctx context.Context, client *CodeupClient, repositoryIdentity, branchName string) (bool, error) {
-	// master->branch: 分支有而 master 没有的提交
-	resp, err := client.GetCompareDetail(ctx, repositoryIdentity, "master", branchName)
+func isBranchMerged(ctx context.Context, client *CodeupClient, repositoryIdentity, branchName, targetBranch string) (bool, error) {
+	// targetBranch->branch: 分支有而 targetBranch 没有的提交
+	resp, err := client.GetCompareDetail(ctx, repositoryIdentity, targetBranch, branchName)
 	if err != nil {
 		return false, fmt.Errorf("比较分支: %w", err)
 	}
@@ -183,10 +184,10 @@ func isBranchMerged(ctx context.Context, client *CodeupClient, repositoryIdentit
 		return false, nil
 	}
 
-	// 获取 master 和分支的 commit SHA
-	masterBranch, err := client.GetBranch(ctx, repositoryIdentity, "master")
+	// 获取 targetBranch 和分支的 commit SHA
+	targetBranchInfo, err := client.GetBranch(ctx, repositoryIdentity, targetBranch)
 	if err != nil {
-		return false, fmt.Errorf("获取 master 分支: %w", err)
+		return false, fmt.Errorf("获取 %s 分支: %w", targetBranch, err)
 	}
 
 	branch, err := client.GetBranch(ctx, repositoryIdentity, branchName)
@@ -195,8 +196,8 @@ func isBranchMerged(ctx context.Context, client *CodeupClient, repositoryIdentit
 	}
 
 	// 如果 commit SHA 相同，说明分支是新创建的，没有自己的提交
-	if masterBranch.Commit != nil && branch.Commit != nil &&
-		masterBranch.Commit.ID == branch.Commit.ID {
+	if targetBranchInfo.Commit != nil && branch.Commit != nil &&
+		targetBranchInfo.Commit.ID == branch.Commit.ID {
 		return false, nil
 	}
 
