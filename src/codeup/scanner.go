@@ -151,14 +151,24 @@ func isProtectedBranch(name string, branch Branch) bool {
 }
 
 func isBranchMerged(ctx context.Context, client *CodeupClient, repositoryIdentity, branchName string) (bool, error) {
-	resp, err := client.GetCompareDetail(ctx, repositoryIdentity, branchName)
+	// master->branch: 分支有而 master 没有的提交
+	resp, err := client.GetCompareDetail(ctx, repositoryIdentity, "master", branchName)
 	if err != nil {
 		return false, fmt.Errorf("比较分支: %w", err)
 	}
-	if resp == nil {
+	if resp == nil || len(resp.Commits) > 0 {
 		return false, nil
 	}
-	return len(resp.Commits) == 0, nil
+
+	// branch->master: master 有而分支没有的提交（判断分支是否有过提交）
+	resp2, err := client.GetCompareDetail(ctx, repositoryIdentity, branchName, "master")
+	if err != nil {
+		return false, fmt.Errorf("比较分支: %w", err)
+	}
+
+	// 新分支: 两个方向都是 0
+	// 已合并分支: master->branch=0 且 branch->master>0
+	return resp2 != nil && len(resp2.Commits) > 0, nil
 }
 
 func executeDeletions(opts TUIOptions, toDelete []Candidate) Result {

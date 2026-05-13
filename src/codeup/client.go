@@ -80,10 +80,10 @@ func (c *CodeupClient) ListBranches(ctx context.Context, repositoryIdentity stri
 	return branches, nil
 }
 
-func (c *CodeupClient) GetCompareDetail(ctx context.Context, repositoryIdentity, branchName string) (*CompareDetailResponse, error) {
+func (c *CodeupClient) GetCompareDetail(ctx context.Context, repositoryIdentity, from, to string) (*CompareDetailResponse, error) {
 	query := url.Values{}
-	query.Set("from", "master")
-	query.Set("to", branchName)
+	query.Set("from", from)
+	query.Set("to", to)
 	query.Set("sourceType", "branch")
 	query.Set("targetType", "branch")
 	query.Set("straight", "false")
