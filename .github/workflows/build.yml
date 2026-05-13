@@ -5,6 +5,8 @@ on:
     branches: [ master ]
   pull_request:
     branches: [ master ]
+  release:
+    types: [ created ]
 
 jobs:
   build:
@@ -27,3 +29,37 @@ jobs:
     
     - name: Test
       run: go test -v ./...
+
+  release:
+    needs: build
+    if: github.event_name == 'release'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        go-version: ['1.21']
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: ${{ matrix.go-version }}
+    
+    - name: Build binaries
+      run: |
+        go build -o codeup-checker-${{ matrix.os }} .
+      env:
+        GOOS: ${{ runner.os }}
+        GOARCH: amd64
+    
+    - name: Upload release asset
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.event.release.upload_url }}
+        asset_path: ./codeup-checker-${{ matrix.os }}
+        asset_name: codeup-checker-${{ matrix.os }}
+        asset_content_type: application/octet-stream
