@@ -101,14 +101,57 @@ repositories:
 }
 
 func SaveConfig(path string, cfg *Config) error {
-	data, err := yaml.Marshal(cfg)
-	if err != nil {
-		return fmt.Errorf("序列化配置失败: %w", err)
+	tmpl := `# Codeup 分支清理工具配置文件
+# 建议将敏感信息设置为环境变量：
+# export CODEUP_ORG_ID=your_org_id
+# export CODEUP_ACCESS_TOKEN=your_token_here
+
+# 组织 ID（可选，优先使用环境变量 CODEUP_ORG_ID）
+organizationId: %q
+
+# 访问令牌（可选，优先使用环境变量 CODEUP_ACCESS_TOKEN）
+accessToken: %q
+
+# 目标分支（默认 master，用于判断分支是否已合并）
+targetBranch: %q
+
+# 排除的分支模式（支持通配符 *）
+# 匹配的分支不会被扫描和删除
+excludePatterns:
+%s
+# 仓库列表
+repositories:
+%s`
+
+	var excludePatterns string
+	if len(cfg.ExcludePatterns) == 0 {
+		excludePatterns = "  []\n"
+	} else {
+		for _, p := range cfg.ExcludePatterns {
+			excludePatterns += fmt.Sprintf("  - %q\n", p)
+		}
 	}
-	
-	if err := os.WriteFile(path, data, 0644); err != nil {
+
+	var repositories string
+	if len(cfg.Repositories) == 0 {
+		repositories = "  []\n"
+	} else {
+		for _, repo := range cfg.Repositories {
+			if repo.ID != "" && repo.Name != "" {
+				repositories += fmt.Sprintf("  - id: %q\n    name: %q\n", repo.ID, repo.Name)
+			} else if repo.ID != "" {
+				repositories += fmt.Sprintf("  - id: %q\n", repo.ID)
+			} else {
+				repositories += fmt.Sprintf("  - name: %q\n", repo.Name)
+			}
+		}
+	}
+
+	content := fmt.Sprintf(tmpl, cfg.OrganizationId, cfg.AccessToken, cfg.GetTargetBranch(), excludePatterns, repositories)
+
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
 		return fmt.Errorf("写入配置文件失败: %w", err)
 	}
-	
+
 	return nil
 }
