@@ -1,5 +1,5 @@
 # Binaries
-codeup-checker
+/codeup-checker
 *.exe
 *.exe~
 *.dll
