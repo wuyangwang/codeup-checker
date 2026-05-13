@@ -179,21 +179,23 @@ func (m Model) executeDeletion() (tea.Model, tea.Cmd) {
 	m.result = result
 	m.mode = ModeNormal
 
+	// 构建成功删除的集合
+	successSet := make(map[string]bool)
+	for _, c := range result.Success {
+		successSet[c.RepoName+":"+c.BranchName] = true
+	}
+
+	// 只移除成功删除的分支
 	newCandidates := make([]Candidate, 0)
-	newSelected := make(map[int]bool)
-	j := 0
-	for i, candidate := range m.candidates {
-		if !m.selected[i] {
+	for _, candidate := range m.candidates {
+		key := candidate.RepoName + ":" + candidate.BranchName
+		if !successSet[key] {
 			newCandidates = append(newCandidates, candidate)
-			if m.selected[i] {
-				newSelected[j] = true
-			}
-			j++
 		}
 	}
 
 	m.candidates = newCandidates
-	m.selected = newSelected
+	m.selected = make(map[int]bool)
 	m.cursor = 0
 	m.allSelected = false
 
