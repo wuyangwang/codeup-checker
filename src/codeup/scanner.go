@@ -160,15 +160,24 @@ func isBranchMerged(ctx context.Context, client *CodeupClient, repositoryIdentit
 		return false, nil
 	}
 
-	// branch->master: master 有而分支没有的提交（判断分支是否有过提交）
-	resp2, err := client.GetCompareDetail(ctx, repositoryIdentity, branchName, "master")
+	// 获取 master 和分支的 commit SHA
+	masterBranch, err := client.GetBranch(ctx, repositoryIdentity, "master")
 	if err != nil {
-		return false, fmt.Errorf("比较分支: %w", err)
+		return false, fmt.Errorf("获取 master 分支: %w", err)
 	}
 
-	// 新分支: 两个方向都是 0
-	// 已合并分支: master->branch=0 且 branch->master>0
-	return resp2 != nil && len(resp2.Commits) > 0, nil
+	branch, err := client.GetBranch(ctx, repositoryIdentity, branchName)
+	if err != nil {
+		return false, fmt.Errorf("获取分支: %w", err)
+	}
+
+	// 如果 commit SHA 相同，说明分支是新创建的，没有自己的提交
+	if masterBranch.Commit != nil && branch.Commit != nil &&
+		masterBranch.Commit.ID == branch.Commit.ID {
+		return false, nil
+	}
+
+	return true, nil
 }
 
 func executeDeletions(opts TUIOptions, toDelete []Candidate) Result {

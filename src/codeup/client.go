@@ -31,6 +31,9 @@ type Repository struct {
 type Branch struct {
 	Name      string `json:"name"`
 	Protected any    `json:"protected"`
+	Commit    *struct {
+		ID string `json:"id"`
+	} `json:"commit"`
 }
 
 type CompareDetailResponse struct {
@@ -78,6 +81,15 @@ func (c *CodeupClient) ListBranches(ctx context.Context, repositoryIdentity stri
 		return nil, err
 	}
 	return branches, nil
+}
+
+func (c *CodeupClient) GetBranch(ctx context.Context, repositoryIdentity, branchName string) (*Branch, error) {
+	path := c.repoPath(repositoryIdentity, "branches", branchName)
+	var branch Branch
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &branch); err != nil {
+		return nil, err
+	}
+	return &branch, nil
 }
 
 func (c *CodeupClient) GetCompareDetail(ctx context.Context, repositoryIdentity, from, to string) (*CompareDetailResponse, error) {
