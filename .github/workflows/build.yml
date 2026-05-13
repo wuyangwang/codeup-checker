@@ -3,22 +3,23 @@ name: Build and Release
 on:
   push:
     branches: [ master ]
+  pull_request:
+    branches: [ master ]
 
 jobs:
-  build:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-        go-version: ['1.21']
-    
+  test:
+    runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
     
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: ${{ matrix.go-version }}
+        go-version: '1.26.1'
+        cache: true
+    
+    - name: Check code
+      run: go vet ./...
     
     - name: Build
       run: go build -v ./...
@@ -27,7 +28,8 @@ jobs:
       run: go test -v ./...
 
   release:
-    needs: build
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -38,14 +40,15 @@ jobs:
     - name: Set up Go
       uses: actions/setup-go@v5
       with:
-        go-version: '1.21'
+        go-version: '1.26.1'
+        cache: true
     
     - name: Build binaries
       run: |
-        GOOS=linux GOARCH=amd64 go build -o codeup-checker-linux .
-        GOOS=darwin GOARCH=amd64 go build -o codeup-checker-macos-intel .
-        GOOS=darwin GOARCH=arm64 go build -o codeup-checker-macos-m芯片 .
-        GOOS=windows GOARCH=amd64 go build -o codeup-checker-windows.exe .
+        GOOS=linux GOARCH=amd64 go build -o codeup-checker-linux-amd64 ./cmd/codeup-checker/
+        GOOS=darwin GOARCH=amd64 go build -o codeup-checker-darwin-amd64 ./cmd/codeup-checker/
+        GOOS=darwin GOARCH=arm64 go build -o codeup-checker-darwin-arm64 ./cmd/codeup-checker/
+        GOOS=windows GOARCH=amd64 go build -o codeup-checker-windows-amd64.exe ./cmd/codeup-checker/
     
     - name: Create Release
       uses: softprops/action-gh-release@v1
@@ -53,9 +56,9 @@ jobs:
         tag_name: v${{ github.run_number }}
         name: Release v${{ github.run_number }}
         files: |
-          codeup-checker-linux
-          codeup-checker-macos-intel
-          codeup-checker-macos-m芯片
-          codeup-checker-windows.exe
+          codeup-checker-linux-amd64
+          codeup-checker-darwin-amd64
+          codeup-checker-darwin-arm64
+          codeup-checker-windows-amd64.exe
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
