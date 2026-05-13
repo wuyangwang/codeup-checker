@@ -1,9 +1,10 @@
 package codeup
 
 type Config struct {
-	OrganizationId string       `json:"organization_id"`
-	AccessToken    string       `json:"access_token"`
-	Repositories   []RepoConfig `json:"repositories"`
+	OrganizationId  string       `json:"organization_id"`
+	AccessToken     string       `json:"access_token"`
+	Repositories    []RepoConfig `json:"repositories"`
+	ExcludePatterns []string     `json:"exclude_patterns,omitempty"`
 }
 
 type RepoConfig struct {

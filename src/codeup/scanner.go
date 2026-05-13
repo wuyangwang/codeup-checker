@@ -29,7 +29,7 @@ func ScanRepositories(ctx context.Context, client *CodeupClient, cfg *Config) ([
 			}
 
 			fmt.Printf("正在检查仓库: %s\n", r.DisplayName())
-			branches, err := listMergedBranches(ctx, client, r)
+			branches, err := listMergedBranches(ctx, client, r, cfg.ExcludePatterns)
 			if err != nil {
 				mu.Lock()
 				errs = append(errs, fmt.Errorf("扫描 %s: %w", r.DisplayName(), err))
@@ -63,7 +63,7 @@ type branchResult struct {
 	err    error
 }
 
-func listMergedBranches(ctx context.Context, client *CodeupClient, repo RepoConfig) ([]string, error) {
+func listMergedBranches(ctx context.Context, client *CodeupClient, repo RepoConfig, excludePatterns []string) ([]string, error) {
 	var mergedBranches []string
 	page := int64(1)
 	pageSize := int64(100)
@@ -89,6 +89,9 @@ func listMergedBranches(ctx context.Context, client *CodeupClient, repo RepoConf
 
 		for _, branch := range branches {
 			if isProtectedBranch(branch.Name, branch) {
+				continue
+			}
+			if isExcludedBranch(branch.Name, excludePatterns) {
 				continue
 			}
 
@@ -148,6 +151,26 @@ func isProtectedBranch(name string, branch Branch) bool {
 	}
 
 	return isTruthy(branch.Protected)
+}
+
+func isExcludedBranch(name string, patterns []string) bool {
+	for _, pattern := range patterns {
+		if matchPattern(pattern, name) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchPattern(pattern, name string) bool {
+	if pattern == name {
+		return true
+	}
+	if len(pattern) > 0 && pattern[len(pattern)-1] == '*' {
+		prefix := pattern[:len(pattern)-1]
+		return len(name) >= len(prefix) && name[:len(prefix)] == prefix
+	}
+	return false
 }
 
 func isBranchMerged(ctx context.Context, client *CodeupClient, repositoryIdentity, branchName string) (bool, error) {

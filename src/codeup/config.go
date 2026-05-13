@@ -72,6 +72,14 @@ organization_id: ""
 # 访问令牌（可选，优先使用环境变量 CODEUP_ACCESS_TOKEN）
 access_token: ""
 
+# 排除的分支模式（支持通配符 *）
+# 匹配的分支不会被扫描和删除
+exclude_patterns:
+  - "feature/*"
+  - "bugfix/*"
+  - "hotfix/*"
+  - "release/*"
+
 # 仓库列表
 repositories:
   # 方式一：使用仓库名称
