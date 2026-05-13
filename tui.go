@@ -25,6 +25,7 @@ type keyMap struct {
 	Quit     key.Binding
 	Confirm  key.Binding
 	Execute  key.Binding
+	Open     key.Binding
 }
 
 var keys = keyMap{
@@ -55,6 +56,10 @@ var keys = keyMap{
 	Execute: key.NewBinding(
 		key.WithKeys("d"),
 		key.WithHelp("d", "执行删除"),
+	),
+	Open: key.NewBinding(
+		key.WithKeys("o"),
+		key.WithHelp("o", "打开配置目录"),
 	),
 }
 
@@ -133,6 +138,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else if m.mode == ModeConfirm {
 				return m.executeDeletion()
 			}
+
+		case key.Matches(msg, keys.Open):
+			openConfigDir()
 		}
 	}
 
@@ -226,7 +234,7 @@ func (m Model) View() string {
 		s.WriteString("\n")
 		s.WriteString(helpStyle.Render("  ↑/k: 上移  ↓/j: 下移  space: 选择/取消"))
 		s.WriteString("\n")
-		s.WriteString(helpStyle.Render("  a: 全选/反选  d: 确认删除  q: 退出"))
+		s.WriteString(helpStyle.Render("  a: 全选/反选  d: 确认删除  o: 打开配置目录  q: 退出"))
 		s.WriteString("\n")
 		
 		selectedCount := 0

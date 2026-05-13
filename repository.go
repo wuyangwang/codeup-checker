@@ -1,12 +1,13 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"strings"
 )
 
-func resolveRepositories(client *CodeupClient, cfg *Config) error {
+func resolveRepositories(ctx context.Context, client *CodeupClient, cfg *Config) error {
 	for i := range cfg.Repositories {
 		repo := &cfg.Repositories[i]
 		if repo.ID != "" {
@@ -19,7 +20,7 @@ func resolveRepositories(client *CodeupClient, cfg *Config) error {
 			continue
 		}
 
-		resolved, err := findRepositoryByName(client, repo.Name)
+		resolved, err := findRepositoryByName(ctx, client, repo.Name)
 		if err != nil {
 			return err
 		}
@@ -33,8 +34,8 @@ func resolveRepositories(client *CodeupClient, cfg *Config) error {
 	return nil
 }
 
-func findRepositoryByName(client *CodeupClient, name string) (*Repository, error) {
-	repos, err := client.ListRepositories(name, 1, 100)
+func findRepositoryByName(ctx context.Context, client *CodeupClient, name string) (*Repository, error) {
+	repos, err := client.ListRepositories(ctx, name, 1, 100)
 	if err != nil {
 		return nil, fmt.Errorf("查询仓库 %q: %w", name, err)
 	}

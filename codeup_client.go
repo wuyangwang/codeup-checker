@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -52,7 +53,7 @@ func newCodeupClient(orgID, token string) *CodeupClient {
 	}
 }
 
-func (c *CodeupClient) ListRepositories(search string, page, perPage int64) ([]Repository, error) {
+func (c *CodeupClient) ListRepositories(ctx context.Context, search string, page, perPage int64) ([]Repository, error) {
 	query := url.Values{}
 	query.Set("page", strconv.FormatInt(page, 10))
 	query.Set("perPage", strconv.FormatInt(perPage, 10))
@@ -60,26 +61,26 @@ func (c *CodeupClient) ListRepositories(search string, page, perPage int64) ([]R
 	query.Set("archived", "false")
 
 	var repos []Repository
-	if err := c.doJSON(http.MethodGet, c.orgPath("repositories"), query, &repos); err != nil {
+	if err := c.doJSON(ctx, http.MethodGet, c.orgPath("repositories"), query, &repos); err != nil {
 		return nil, err
 	}
 	return repos, nil
 }
 
-func (c *CodeupClient) ListBranches(repositoryIdentity string, page, perPage int64) ([]Branch, error) {
+func (c *CodeupClient) ListBranches(ctx context.Context, repositoryIdentity string, page, perPage int64) ([]Branch, error) {
 	query := url.Values{}
 	query.Set("page", strconv.FormatInt(page, 10))
 	query.Set("perPage", strconv.FormatInt(perPage, 10))
 
 	var branches []Branch
 	path := c.repoPath(repositoryIdentity, "branches")
-	if err := c.doJSON(http.MethodGet, path, query, &branches); err != nil {
+	if err := c.doJSON(ctx, http.MethodGet, path, query, &branches); err != nil {
 		return nil, err
 	}
 	return branches, nil
 }
 
-func (c *CodeupClient) GetCompareDetail(repositoryIdentity, branchName string) (*CompareDetailResponse, error) {
+func (c *CodeupClient) GetCompareDetail(ctx context.Context, repositoryIdentity, branchName string) (*CompareDetailResponse, error) {
 	query := url.Values{}
 	query.Set("from", "master")
 	query.Set("to", branchName)
@@ -88,15 +89,15 @@ func (c *CodeupClient) GetCompareDetail(repositoryIdentity, branchName string) (
 	query.Set("straight", "false")
 
 	var result CompareDetailResponse
-	if err := c.doJSON(http.MethodGet, c.repoPath(repositoryIdentity, "compares"), query, &result); err != nil {
+	if err := c.doJSON(ctx, http.MethodGet, c.repoPath(repositoryIdentity, "compares"), query, &result); err != nil {
 		return nil, err
 	}
 	return &result, nil
 }
 
-func (c *CodeupClient) DeleteBranch(repositoryIdentity, branchName string) error {
+func (c *CodeupClient) DeleteBranch(ctx context.Context, repositoryIdentity, branchName string) error {
 	path := c.repoPath(repositoryIdentity, "branches", branchName)
-	return c.doJSON(http.MethodDelete, path, nil, nil)
+	return c.doJSON(ctx, http.MethodDelete, path, nil, nil)
 }
 
 func (c *CodeupClient) orgPath(parts ...string) string {
@@ -111,7 +112,7 @@ func (c *CodeupClient) repoPath(repositoryIdentity string, parts ...string) stri
 	return c.orgPath(pathParts...)
 }
 
-func (c *CodeupClient) doJSON(method, path string, query url.Values, out any) error {
+func (c *CodeupClient) doJSON(ctx context.Context, method, path string, query url.Values, out any) error {
 	reqURL, err := url.Parse(c.baseURL)
 	if err != nil {
 		return err
@@ -121,7 +122,7 @@ func (c *CodeupClient) doJSON(method, path string, query url.Values, out any) er
 		reqURL.RawQuery = query.Encode()
 	}
 
-	req, err := http.NewRequest(method, reqURL.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, method, reqURL.String(), nil)
 	if err != nil {
 		return err
 	}
