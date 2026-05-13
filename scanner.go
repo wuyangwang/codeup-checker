@@ -57,6 +57,12 @@ func scanRepositories(ctx context.Context, client *CodeupClient, cfg *Config) ([
 	return candidates, nil
 }
 
+type branchResult struct {
+	name   string
+	merged bool
+	err    error
+}
+
 func listMergedBranches(ctx context.Context, client *CodeupClient, repo RepoConfig) ([]string, error) {
 	var mergedBranches []string
 	page := int64(1)
@@ -76,12 +82,6 @@ func listMergedBranches(ctx context.Context, client *CodeupClient, repo RepoConf
 
 		if len(branches) == 0 {
 			break
-		}
-
-		type branchResult struct {
-			name   string
-			merged bool
-			err    error
 		}
 
 		resultCh := make(chan branchResult, len(branches))
