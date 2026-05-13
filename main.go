@@ -16,7 +16,8 @@ func main() {
 		if err := createDefaultConfig(cfgPath); err != nil {
 			fatal("创建默认配置文件失败: %v", err)
 		}
-		fmt.Println("请编辑配置文件后重新运行程序。")
+		fmt.Println("配置文件已创建，请编辑配置文件后重新运行程序。")
+		fmt.Printf("配置文件位置: %s\n", cfgPath)
 		return
 	}
 	
