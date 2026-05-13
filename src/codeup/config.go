@@ -91,3 +91,16 @@ repositories:
 	
 	return nil
 }
+
+func SaveConfig(path string, cfg *Config) error {
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("序列化配置失败: %w", err)
+	}
+	
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		return fmt.Errorf("写入配置文件失败: %w", err)
+	}
+	
+	return nil
+}
