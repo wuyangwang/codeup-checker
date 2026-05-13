@@ -45,10 +45,10 @@ jobs:
     
     - name: Build binaries
       run: |
-        GOOS=linux GOARCH=amd64 go build -o codeup-checker-linux-amd64 ./cmd/codeup-checker/
-        GOOS=darwin GOARCH=amd64 go build -o codeup-checker-darwin-amd64 ./cmd/codeup-checker/
-        GOOS=darwin GOARCH=arm64 go build -o codeup-checker-darwin-arm64 ./cmd/codeup-checker/
-        GOOS=windows GOARCH=amd64 go build -o codeup-checker-windows-amd64.exe ./cmd/codeup-checker/
+        GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o codeup-checker-linux-amd64 ./cmd/codeup-checker/
+        GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o codeup-checker-darwin-amd64 ./cmd/codeup-checker/
+        GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o codeup-checker-darwin-arm64 ./cmd/codeup-checker/
+        GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o codeup-checker-windows-amd64.exe ./cmd/codeup-checker/
     
     - name: Create Release
       uses: softprops/action-gh-release@v1
