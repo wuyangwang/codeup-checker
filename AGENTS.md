@@ -92,10 +92,10 @@ go vet ./...
 配置文件位置：`~/.config/codeup-checker/config.yaml`
 
 ```yaml
-organization_id: "your_org_id"
-access_token: "your_token"
+organizationId: "your_org_id"
+accessToken: "your_token"
 repositories:
-  - name: "repo-name"
+  - name: "your-repo-name"
   - id: "12345678"
 ```
 

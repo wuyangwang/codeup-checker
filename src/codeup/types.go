@@ -1,11 +1,11 @@
 package codeup
 
 type Config struct {
-	OrganizationId  string       `json:"organization_id"`
-	AccessToken     string       `json:"access_token"`
-	TargetBranch    string       `json:"target_branch,omitempty"`
-	Repositories    []RepoConfig `json:"repositories"`
-	ExcludePatterns []string     `json:"exclude_patterns,omitempty"`
+	OrganizationId  string       `json:"organizationId" yaml:"organizationId"`
+	AccessToken     string       `json:"accessToken" yaml:"accessToken"`
+	TargetBranch    string       `json:"targetBranch,omitempty" yaml:"targetBranch,omitempty"`
+	Repositories    []RepoConfig `json:"repositories" yaml:"repositories"`
+	ExcludePatterns []string     `json:"excludePatterns,omitempty" yaml:"excludePatterns,omitempty"`
 }
 
 func (c Config) GetTargetBranch() string {
@@ -16,8 +16,8 @@ func (c Config) GetTargetBranch() string {
 }
 
 type RepoConfig struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID   string `json:"id" yaml:"id"`
+	Name string `json:"name" yaml:"name"`
 }
 
 func (r RepoConfig) Identity() string {

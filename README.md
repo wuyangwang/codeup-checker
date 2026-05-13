@@ -40,15 +40,15 @@ export CODEUP_ACCESS_TOKEN="your_token"
 
 ```yaml
 # 组织 ID（可选，优先使用环境变量 CODEUP_ORG_ID）
-organization_id: ""
+organizationId: ""
 
 # 访问令牌（可选，优先使用环境变量 CODEUP_ACCESS_TOKEN）
-access_token: ""
+accessToken: ""
 
 # 仓库列表
 repositories:
   # 方式一：使用仓库名称
-  - name: "example-repo"
+  - name: "your-repo-name"
   
   # 方式二：使用仓库 ID（更稳定）
   # - id: "12345678"

@@ -67,23 +67,23 @@ func CreateDefaultConfig(path string) error {
 # export CODEUP_ACCESS_TOKEN=your_token_here
 
 # 组织 ID（可选，优先使用环境变量 CODEUP_ORG_ID）
-organization_id: ""
+organizationId: ""
 
 # 访问令牌（可选，优先使用环境变量 CODEUP_ACCESS_TOKEN）
-access_token: ""
+accessToken: ""
 
 # 目标分支（默认 master，用于判断分支是否已合并）
-target_branch: "master"
+targetBranch: "master"
 
 # 排除的分支模式（支持通配符 *）
 # 匹配的分支不会被扫描和删除
-exclude_patterns:
+excludePatterns:
   - "feature/*"
 
 # 仓库列表
 repositories:
   # 方式一：使用仓库名称
-  - name: "example-repo"
+  - name: "your-repo-name"
   
   # 方式二：使用仓库 ID（更稳定）
   # - id: "12345678"
