@@ -137,6 +137,8 @@ func isProtectedBranch(name string, branch Branch) bool {
 	protectedNames := map[string]bool{
 		"master":     true,
 		"main":       true,
+		"develop":    true,
+		"test":       true,
 		"production": true,
 		"release":    true,
 	}
@@ -159,7 +161,7 @@ func isBranchMerged(ctx context.Context, client *CodeupClient, repositoryIdentit
 	return len(resp.Commits) == 0, nil
 }
 
-func executeDeletions(ctx context.Context, client *CodeupClient, toDelete []Candidate, dryRun bool) Result {
+func executeDeletions(opts TUIOptions, toDelete []Candidate) Result {
 	result := Result{}
 	semaphore := make(chan struct{}, 5)
 	var wg sync.WaitGroup
@@ -171,16 +173,16 @@ func executeDeletions(ctx context.Context, client *CodeupClient, toDelete []Cand
 			defer wg.Done()
 
 			select {
-			case <-ctx.Done():
+			case <-opts.Ctx.Done():
 				mu.Lock()
-				result.Failed = append(result.Failed, FailedDeletion{Candidate: candidate, Error: ctx.Err()})
+				result.Failed = append(result.Failed, FailedDeletion{Candidate: candidate, Error: opts.Ctx.Err()})
 				mu.Unlock()
 				return
 			case semaphore <- struct{}{}:
 				defer func() { <-semaphore }()
 			}
 
-			if dryRun {
+			if opts.DryRun {
 				fmt.Printf("[DryRun] 将删除 %s: %s\n", candidate.RepoName, candidate.BranchName)
 				mu.Lock()
 				result.Success = append(result.Success, candidate)
@@ -189,7 +191,7 @@ func executeDeletions(ctx context.Context, client *CodeupClient, toDelete []Cand
 			}
 
 			fmt.Printf("正在删除 %s: %s... ", candidate.RepoName, candidate.BranchName)
-			err := client.DeleteBranch(ctx, candidate.RepoID, candidate.BranchName)
+			err := opts.Client.DeleteBranch(opts.Ctx, candidate.RepoID, candidate.BranchName)
 
 			mu.Lock()
 			if err != nil {

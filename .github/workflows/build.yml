@@ -43,7 +43,8 @@ jobs:
     - name: Build binaries
       run: |
         GOOS=linux GOARCH=amd64 go build -o codeup-checker-linux .
-        GOOS=darwin GOARCH=amd64 go build -o codeup-checker-macos .
+        GOOS=darwin GOARCH=amd64 go build -o codeup-checker-macos-intel .
+        GOOS=darwin GOARCH=arm64 go build -o codeup-checker-macos-m芯片 .
         GOOS=windows GOARCH=amd64 go build -o codeup-checker-windows.exe .
     
     - name: Create Release
@@ -53,7 +54,8 @@ jobs:
         name: Release v${{ github.run_number }}
         files: |
           codeup-checker-linux
-          codeup-checker-macos
+          codeup-checker-macos-intel
+          codeup-checker-macos-m芯片
           codeup-checker-windows.exe
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

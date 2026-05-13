@@ -107,7 +107,11 @@ func main() {
 		return
 	}
 
-	result, err := codeup.StartTUI(candidates)
+	result, err := codeup.StartTUI(candidates, codeup.TUIOptions{
+		Client: client,
+		Ctx:    ctx,
+		DryRun: os.Getenv("DRY_RUN") == "true",
+	})
 	if err != nil {
 		codeup.Fatal("TUI 错误: %v", err)
 	}

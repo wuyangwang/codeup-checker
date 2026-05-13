@@ -1,6 +1,7 @@
 package codeup
 
 import (
+	"context"
 	"fmt"
 	"strings"
 
@@ -14,7 +15,6 @@ type Mode int
 const (
 	ModeNormal Mode = iota
 	ModeConfirm
-	ModeResult
 )
 
 type keyMap struct {
@@ -26,60 +26,73 @@ type keyMap struct {
 	Confirm  key.Binding
 	Execute  key.Binding
 	Open     key.Binding
+	Esc      key.Binding
 }
 
 var keys = keyMap{
 	Up: key.NewBinding(
 		key.WithKeys("up", "k"),
-		key.WithHelp("↑/k", "上移"),
+		key.WithHelp("↑/K", "上移"),
 	),
 	Down: key.NewBinding(
 		key.WithKeys("down", "j"),
-		key.WithHelp("↓/j", "下移"),
+		key.WithHelp("↓/J", "下移"),
 	),
 	Space: key.NewBinding(
 		key.WithKeys(" "),
-		key.WithHelp("space", "选择/取消"),
+		key.WithHelp("SPACE", "选择/取消"),
 	),
 	Select: key.NewBinding(
 		key.WithKeys("a"),
-		key.WithHelp("a", "全选/反选"),
+		key.WithHelp("A", "全选/反选"),
 	),
 	Quit: key.NewBinding(
 		key.WithKeys("q"),
-		key.WithHelp("q", "退出"),
+		key.WithHelp("Q", "退出"),
 	),
 	Confirm: key.NewBinding(
 		key.WithKeys("d"),
-		key.WithHelp("d", "确认删除"),
+		key.WithHelp("D", "确认删除"),
 	),
 	Execute: key.NewBinding(
 		key.WithKeys("d"),
-		key.WithHelp("d", "执行删除"),
+		key.WithHelp("D", "执行删除"),
 	),
 	Open: key.NewBinding(
 		key.WithKeys("o"),
-		key.WithHelp("o", "打开配置目录"),
+		key.WithHelp("O", "打开配置目录"),
+	),
+	Esc: key.NewBinding(
+		key.WithKeys("esc"),
+		key.WithHelp("ESC", "取消"),
 	),
 }
 
-type Model struct {
-	candidates []Candidate
-	selected   map[int]bool
-	cursor     int
-	mode       Mode
-	result     Result
-	quitting   bool
-	allSelected bool
+type TUIOptions struct {
+	Client *CodeupClient
+	Ctx    context.Context
+	DryRun bool
 }
 
-func NewModel(candidates []Candidate) Model {
+type Model struct {
+	candidates  []Candidate
+	selected    map[int]bool
+	cursor      int
+	mode        Mode
+	result      Result
+	quitting    bool
+	allSelected bool
+	opts        TUIOptions
+}
+
+func NewModel(candidates []Candidate, opts TUIOptions) Model {
 	return Model{
-		candidates: candidates,
-		selected:   make(map[int]bool),
-		cursor:     0,
-		mode:       ModeNormal,
+		candidates:  candidates,
+		selected:    make(map[int]bool),
+		cursor:      0,
+		mode:        ModeNormal,
 		allSelected: false,
+		opts:        opts,
 	}
 }
 
@@ -139,6 +152,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.executeDeletion()
 			}
 
+		case key.Matches(msg, keys.Esc):
+			if m.mode == ModeConfirm {
+				m.mode = ModeNormal
+			}
+
 		case key.Matches(msg, keys.Open):
 			OpenConfigDir()
 		}
@@ -155,14 +173,11 @@ func (m Model) executeDeletion() (tea.Model, tea.Cmd) {
 		}
 	}
 
-	// TODO: 集成实际的删除函数
-	result := Result{}
-	for _, candidate := range toDelete {
-		result.Success = append(result.Success, candidate)
-	}
+	// 调用实际的删除函数
+	result := executeDeletions(m.opts, toDelete)
 
 	m.result = result
-	m.mode = ModeResult
+	m.mode = ModeNormal
 
 	newCandidates := make([]Candidate, 0)
 	newSelected := make(map[int]bool)
@@ -232,9 +247,9 @@ func (m Model) View() string {
 			MarginTop(1)
 		s.WriteString(helpStyle.Render("操作说明:"))
 		s.WriteString("\n")
-		s.WriteString(helpStyle.Render("  ↑/k: 上移  ↓/j: 下移  space: 选择/取消"))
+		s.WriteString(helpStyle.Render("  ↑/K: 上移  ↓/J: 下移  SPACE: 选择/取消"))
 		s.WriteString("\n")
-		s.WriteString(helpStyle.Render("  a: 全选/反选  d: 确认删除  o: 打开配置目录  q: 退出"))
+		s.WriteString(helpStyle.Render("  A: 全选/反选  D: 确认删除  O: 打开配置目录  Q: 退出"))
 		s.WriteString("\n")
 		
 		selectedCount := 0
@@ -258,40 +273,16 @@ func (m Model) View() string {
 			MarginTop(1)
 		s.WriteString(confirmStyle.Render("确认删除选中的分支？"))
 		s.WriteString("\n")
-		s.WriteString(confirmStyle.Render("按 d 执行删除，按其他键取消"))
+		s.WriteString(confirmStyle.Render("按 D 执行删除，按 ESC 取消"))
 		s.WriteString("\n")
 
-	case ModeResult:
-		resultStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("205")).
-			Bold(true).
-			MarginTop(1)
-		s.WriteString(resultStyle.Render("删除结果:"))
-		s.WriteString("\n")
-		s.WriteString(resultStyle.Render(fmt.Sprintf("成功删除: %d 个分支", len(m.result.Success))))
-		s.WriteString("\n")
-		
-		if len(m.result.Failed) > 0 {
-			s.WriteString(resultStyle.Render(fmt.Sprintf("删除失败: %d 个分支", len(m.result.Failed))))
-			s.WriteString("\n")
-		}
-		
-		if len(m.candidates) == 0 {
-			s.WriteString(resultStyle.Render("\n所有分支已删除完毕"))
-			s.WriteString("\n")
-			s.WriteString(resultStyle.Render("按 q 退出"))
-			s.WriteString("\n")
-		} else {
-			s.WriteString(resultStyle.Render("\n按任意键返回继续选择"))
-			s.WriteString("\n")
-		}
 	}
 
 	return s.String()
 }
 
-func StartTUI(candidates []Candidate) (Result, error) {
-	p := tea.NewProgram(NewModel(candidates))
+func StartTUI(candidates []Candidate, opts TUIOptions) (Result, error) {
+	p := tea.NewProgram(NewModel(candidates, opts))
 	
 	finalModel, err := p.Run()
 	if err != nil {
