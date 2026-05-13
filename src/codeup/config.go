@@ -1,0 +1,93 @@
+package codeup
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"gopkg.in/yaml.v3"
+)
+
+func LoadConfig(path string) (*Config, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("读取配置文件: %w", err)
+	}
+
+	var cfg Config
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, fmt.Errorf("解析配置文件: %w", err)
+	}
+
+	return &cfg, nil
+}
+
+func ValidateConfig(cfg *Config) error {
+	for _, repo := range cfg.Repositories {
+		if repo.ID == "" && repo.Name == "" {
+			return fmt.Errorf("repositories 中存在缺少 id/name 的仓库配置")
+		}
+	}
+
+	return nil
+}
+
+func GetAccessToken(cfg *Config) string {
+	if token := os.Getenv("CODEUP_ACCESS_TOKEN"); token != "" {
+		return token
+	}
+	return cfg.AccessToken
+}
+
+func GetOrganizationId(cfg *Config) string {
+	if orgId := os.Getenv("CODEUP_ORG_ID"); orgId != "" {
+		return orgId
+	}
+	return cfg.OrganizationId
+}
+
+func GetConfigPath() (string, error) {
+	configDir, err := os.UserConfigDir()
+	if err != nil {
+		return "", fmt.Errorf("获取配置目录失败: %w", err)
+	}
+	
+	appDir := filepath.Join(configDir, "codeup-checker")
+	if err := os.MkdirAll(appDir, 0755); err != nil {
+		return "", fmt.Errorf("创建配置目录失败: %w", err)
+	}
+	
+	return filepath.Join(appDir, "config.yaml"), nil
+}
+
+func CreateDefaultConfig(path string) error {
+	defaultConfig := `# Codeup 分支清理工具配置文件
+# 建议将敏感信息设置为环境变量：
+# export CODEUP_ORG_ID=your_org_id
+# export CODEUP_ACCESS_TOKEN=your_token_here
+
+# 组织 ID（可选，优先使用环境变量 CODEUP_ORG_ID）
+organization_id: ""
+
+# 访问令牌（可选，优先使用环境变量 CODEUP_ACCESS_TOKEN）
+access_token: ""
+
+# 仓库列表
+repositories:
+  # 方式一：使用仓库名称
+  - name: "example-repo"
+  
+  # 方式二：使用仓库 ID（更稳定）
+  # - id: "12345678"
+  
+  # 方式三：同时指定 ID 和名称
+  # - id: "12345678"
+  #   name: "my-repo"
+`
+	
+	if err := os.WriteFile(path, []byte(defaultConfig), 0644); err != nil {
+		return fmt.Errorf("创建默认配置文件失败: %w", err)
+	}
+	
+	return nil
+}
