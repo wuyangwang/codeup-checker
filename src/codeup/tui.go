@@ -307,6 +307,12 @@ func (m Model) View() string {
 
 	var s strings.Builder
 
+	reqStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("241")).
+		MarginBottom(1)
+	s.WriteString(reqStyle.Render(fmt.Sprintf("HTTP 请求: %d", m.opts.Client.RequestCount())))
+	s.WriteString("\n")
+
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("205")).
@@ -322,7 +328,7 @@ func (m Model) View() string {
 
 		checked := " "
 		if m.selected[i] {
-			checked = "x"
+			checked = "✓"
 		}
 
 		line := fmt.Sprintf("%s [%s] %s: %s", cursor, checked, candidate.RepoName, candidate.BranchName)
@@ -397,12 +403,6 @@ func (m Model) View() string {
 		s.WriteString(progressStyle.Render(fmt.Sprintf("删除进度: [%s] %d/%d", bar, m.deleting, m.deleteTotal)))
 		s.WriteString("\n")
 	}
-
-	reqStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("241")).
-		MarginTop(1)
-	s.WriteString(reqStyle.Render(fmt.Sprintf("HTTP 请求: %d", m.opts.Client.RequestCount())))
-	s.WriteString("\n")
 
 	return s.String()
 }

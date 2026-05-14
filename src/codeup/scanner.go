@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 )
 
 func ScanRepositories(ctx context.Context, client *CodeupClient, cfg *Config) ([]Candidate, error) {
@@ -12,7 +13,31 @@ func ScanRepositories(ctx context.Context, client *CodeupClient, cfg *Config) ([
 		mu         sync.Mutex
 		candidates []Candidate
 		errs       []error
+		outMu      sync.Mutex
 	)
+
+	done := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(300 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				outMu.Lock()
+				fmt.Printf("\r\033[KHTTP 请求: %d", client.RequestCount())
+				outMu.Unlock()
+			}
+		}
+	}()
+
+	printLine := func(format string, a ...any) {
+		outMu.Lock()
+		fmt.Printf("\r\033[K")
+		fmt.Printf(format, a...)
+		outMu.Unlock()
+	}
 
 	scanSem := make(chan struct{}, cfg.GetScanConcurrency())
 	var wg sync.WaitGroup
@@ -33,8 +58,8 @@ func ScanRepositories(ctx context.Context, client *CodeupClient, cfg *Config) ([
 			default:
 			}
 
-			fmt.Printf("正在检查仓库: %s\n", r.DisplayName())
-			branches, err := listMergedBranches(ctx, client, r, cfg)
+			printLine("正在检查仓库: %s\n", r.DisplayName())
+			branches, err := listMergedBranches(ctx, client, r, cfg, printLine)
 			if err != nil {
 				mu.Lock()
 				errs = append(errs, fmt.Errorf("扫描 %s: %w", r.DisplayName(), err))
@@ -55,6 +80,11 @@ func ScanRepositories(ctx context.Context, client *CodeupClient, cfg *Config) ([
 	}
 
 	wg.Wait()
+	close(done)
+
+	outMu.Lock()
+	fmt.Printf("\r\033[K")
+	outMu.Unlock()
 
 	if len(errs) > 0 {
 		return candidates, fmt.Errorf("扫描完成但有 %d 个错误: %w", len(errs), errors.Join(errs...))
@@ -68,7 +98,7 @@ type branchResult struct {
 	err    error
 }
 
-func listMergedBranches(ctx context.Context, client *CodeupClient, repo RepoConfig, cfg *Config) ([]string, error) {
+func listMergedBranches(ctx context.Context, client *CodeupClient, repo RepoConfig, cfg *Config, printLine func(string, ...any)) ([]string, error) {
 	var mergedBranches []string
 	page := int64(1)
 	pageSize := int64(100)
@@ -133,12 +163,12 @@ func listMergedBranches(ctx context.Context, client *CodeupClient, repo RepoConf
 
 		for result := range resultCh {
 			if result.err != nil {
-				fmt.Printf("    检查 %s 时出错: %v\n", result.name, result.err)
+				printLine("    检查 %s 时出错: %v\n", result.name, result.err)
 				continue
 			}
 			if result.merged {
 				mergedBranches = append(mergedBranches, result.name)
-				fmt.Printf("    发现已合并分支: %s\n", result.name)
+				printLine("    发现已合并分支: %s\n", result.name)
 			}
 		}
 
