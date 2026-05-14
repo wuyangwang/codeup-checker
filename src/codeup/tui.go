@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbletea"
@@ -100,6 +101,7 @@ type Model struct {
 	deleting    int
 	deleteTotal int
 	deleteDone  bool
+	msgChan     chan tea.Msg
 }
 
 func NewModel(candidates []Candidate, opts TUIOptions) Model {
@@ -182,7 +184,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case DeletionProgressMsg:
 		m.deleting = msg.Completed
 		m.deleteTotal = msg.Total
-		return m, nil
+		return m, m.listen()
 
 	case DeletionDoneMsg:
 		m.result = msg.Result
@@ -214,6 +216,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m Model) listen() tea.Cmd {
+	return func() tea.Msg {
+		return <-m.msgChan
+	}
+}
+
 func (m Model) startDeletion() (tea.Model, tea.Cmd) {
 	var toDelete []Candidate
 	for i, selected := range m.selected {
@@ -225,59 +233,71 @@ func (m Model) startDeletion() (tea.Model, tea.Cmd) {
 	m.mode = ModeDeleting
 	m.deleteTotal = len(toDelete)
 	m.deleting = 0
+	m.msgChan = make(chan tea.Msg, m.deleteTotal+1)
 
-	return m, runDeletionAsync(m.opts, toDelete)
+	go runDeletionAsync(m.opts, toDelete, m.msgChan)
+	return m, m.listen()
 }
 
-func runDeletionAsync(opts TUIOptions, toDelete []Candidate) tea.Cmd {
-	return func() tea.Msg {
-		result := Result{}
-		semaphore := make(chan struct{}, 5)
-		var mu sync.Mutex
-		completed := 0
+func runDeletionAsync(opts TUIOptions, toDelete []Candidate, msgChan chan tea.Msg) {
+	result := Result{}
+	semaphore := make(chan struct{}, 5)
+	var mu sync.Mutex
+	var completed int32
 
-		var wg sync.WaitGroup
-		for _, candidate := range toDelete {
-			wg.Add(1)
-			semaphore <- struct{}{}
-			go func(c Candidate) {
-				defer wg.Done()
-				defer func() { <-semaphore }()
+	var wg sync.WaitGroup
+	for _, candidate := range toDelete {
+		wg.Add(1)
+		semaphore <- struct{}{}
+		go func(c Candidate) {
+			defer wg.Done()
+			defer func() { <-semaphore }()
 
-				select {
-				case <-opts.Ctx.Done():
-					mu.Lock()
-					result.Failed = append(result.Failed, FailedDeletion{Candidate: c, Error: opts.Ctx.Err()})
-					completed++
-					mu.Unlock()
-					return
-				default:
-				}
-
-				if opts.DryRun {
-					mu.Lock()
-					result.Success = append(result.Success, c)
-					completed++
-					mu.Unlock()
-					return
-				}
-
-				err := opts.Client.DeleteBranch(opts.Ctx, c.RepoID, c.BranchName)
-
+			select {
+			case <-opts.Ctx.Done():
 				mu.Lock()
-				if err != nil {
-					result.Failed = append(result.Failed, FailedDeletion{Candidate: c, Error: err})
-				} else {
-					result.Success = append(result.Success, c)
-				}
-				completed++
+				result.Failed = append(result.Failed, FailedDeletion{Candidate: c, Error: opts.Ctx.Err()})
 				mu.Unlock()
-			}(candidate)
-		}
+				current := atomic.AddInt32(&completed, 1)
+				msgChan <- DeletionProgressMsg{
+					Total:     len(toDelete),
+					Completed: int(current),
+				}
+				return
+			default:
+			}
 
-		wg.Wait()
-		return DeletionDoneMsg{Result: result}
+			if opts.DryRun {
+				mu.Lock()
+				result.Success = append(result.Success, c)
+				mu.Unlock()
+				current := atomic.AddInt32(&completed, 1)
+				msgChan <- DeletionProgressMsg{
+					Total:     len(toDelete),
+					Completed: int(current),
+				}
+				return
+			}
+
+			err := opts.Client.DeleteBranch(opts.Ctx, c.RepoID, c.BranchName)
+
+			mu.Lock()
+			if err != nil {
+				result.Failed = append(result.Failed, FailedDeletion{Candidate: c, Error: err})
+			} else {
+				result.Success = append(result.Success, c)
+			}
+			mu.Unlock()
+			current := atomic.AddInt32(&completed, 1)
+			msgChan <- DeletionProgressMsg{
+				Total:     len(toDelete),
+				Completed: int(current),
+			}
+		}(candidate)
 	}
+
+	wg.Wait()
+	msgChan <- DeletionDoneMsg{Result: result}
 }
 
 func (m Model) View() string {
@@ -355,13 +375,6 @@ func (m Model) View() string {
 			s.WriteString("\n")
 		}
 
-		if m.deleteDone || m.deleteTotal > 0 {
-			reqStyle := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("241"))
-			s.WriteString(reqStyle.Render(fmt.Sprintf("HTTP 请求: %d", m.opts.Client.RequestCount())))
-			s.WriteString("\n")
-		}
-
 	case ModeConfirm:
 		confirmStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("205")).
@@ -383,12 +396,13 @@ func (m Model) View() string {
 		bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
 		s.WriteString(progressStyle.Render(fmt.Sprintf("删除进度: [%s] %d/%d", bar, m.deleting, m.deleteTotal)))
 		s.WriteString("\n")
-
-		reqStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241"))
-		s.WriteString(reqStyle.Render(fmt.Sprintf("HTTP 请求: %d", m.opts.Client.RequestCount())))
-		s.WriteString("\n")
 	}
+
+	reqStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("241")).
+		MarginTop(1)
+	s.WriteString(reqStyle.Render(fmt.Sprintf("HTTP 请求: %d", m.opts.Client.RequestCount())))
+	s.WriteString("\n")
 
 	return s.String()
 }
