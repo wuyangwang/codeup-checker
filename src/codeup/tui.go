@@ -308,14 +308,14 @@ func (m Model) View() string {
 	var s strings.Builder
 
 	reqStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("241")).
+		Foreground(lipgloss.Color(colorMuted)).
 		MarginBottom(1)
-	s.WriteString(reqStyle.Render(fmt.Sprintf("HTTP 请求: %d", m.opts.Client.RequestCount())))
+	s.WriteString(reqStyle.Render(renderHTTPCount(m.opts.Client.RequestCount())))
 	s.WriteString("\n")
 
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("205")).
+		Foreground(lipgloss.Color(colorTitle)).
 		MarginBottom(1)
 	s.WriteString(titleStyle.Render("=== 可删除的分支（已合并到 master）==="))
 	s.WriteString("\n\n")
@@ -335,7 +335,7 @@ func (m Model) View() string {
 
 		if m.cursor == i && m.mode == ModeNormal {
 			lineStyle := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("205")).
+				Foreground(lipgloss.Color(colorTitle)).
 				Bold(true)
 			line = lineStyle.Render(line)
 		}
@@ -349,7 +349,7 @@ func (m Model) View() string {
 	switch m.mode {
 	case ModeNormal:
 		helpStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("241")).
+			Foreground(lipgloss.Color(colorMuted)).
 			MarginTop(1)
 		s.WriteString(helpStyle.Render("操作说明:"))
 		s.WriteString("\n")
@@ -366,7 +366,7 @@ func (m Model) View() string {
 		}
 		if selectedCount > 0 {
 			countStyle := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("205")).
+				Foreground(lipgloss.Color(colorAccent)).
 				Bold(true)
 			s.WriteString(countStyle.Render(fmt.Sprintf("\n已选择 %d 个分支", selectedCount)))
 			s.WriteString("\n")
@@ -374,7 +374,7 @@ func (m Model) View() string {
 
 		if m.deleteDone {
 			doneStyle := lipgloss.NewStyle().
-				Foreground(lipgloss.Color("10")).
+				Foreground(lipgloss.Color(colorSuccess)).
 				Bold(true)
 			s.WriteString(doneStyle.Render(fmt.Sprintf("\n删除完成: 成功 %d, 失败 %d",
 				len(m.result.Success), len(m.result.Failed))))
@@ -383,7 +383,7 @@ func (m Model) View() string {
 
 	case ModeConfirm:
 		confirmStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("205")).
+			Foreground(lipgloss.Color(colorWarn)).
 			Bold(true).
 			MarginTop(1)
 		s.WriteString(confirmStyle.Render("确认删除选中的分支？"))
@@ -393,7 +393,7 @@ func (m Model) View() string {
 
 	case ModeDeleting:
 		progressStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("205")).
+			Foreground(lipgloss.Color(colorAccent)).
 			Bold(true)
 		barWidth := 40
 		progress := float64(m.deleting) / float64(m.deleteTotal)

@@ -26,7 +26,7 @@ func ScanRepositories(ctx context.Context, client *CodeupClient, cfg *Config) ([
 				return
 			case <-ticker.C:
 				outMu.Lock()
-				fmt.Printf("\r\033[KHTTP 请求: %d", client.RequestCount())
+				fmt.Printf("\r\033[K%s", renderHTTPCount(client.RequestCount()))
 				outMu.Unlock()
 			}
 		}
@@ -58,7 +58,7 @@ func ScanRepositories(ctx context.Context, client *CodeupClient, cfg *Config) ([
 			default:
 			}
 
-			printLine("正在检查仓库: %s\n", r.DisplayName())
+			printLine("%s\n", renderRepoChecking(r.DisplayName()))
 			branches, err := listMergedBranches(ctx, client, r, cfg, printLine)
 			if err != nil {
 				mu.Lock()
@@ -98,15 +98,27 @@ type branchResult struct {
 	err    error
 }
 
+type branchScanContext struct {
+	repositoryIdentity string
+	targetBranch       string
+	targetCommit       string
+}
+
 func listMergedBranches(ctx context.Context, client *CodeupClient, repo RepoConfig, cfg *Config, printLine func(string, ...any)) ([]string, error) {
 	var mergedBranches []string
 	page := int64(1)
 	pageSize := int64(100)
 	targetBranch := cfg.GetTargetBranch()
 
-	targetCommit, err := fetchTargetCommit(ctx, client, repo.Identity(), targetBranch)
+	repositoryIdentity := repo.Identity()
+	targetCommit, err := fetchTargetCommit(ctx, client, repositoryIdentity, targetBranch)
 	if err != nil {
 		return nil, fmt.Errorf("获取目标分支 %s: %w", targetBranch, err)
+	}
+	scanCtx := branchScanContext{
+		repositoryIdentity: repositoryIdentity,
+		targetBranch:       targetBranch,
+		targetCommit:       targetCommit,
 	}
 
 	compareSem := make(chan struct{}, cfg.GetCompareConcurrency())
@@ -151,7 +163,7 @@ func listMergedBranches(ctx context.Context, client *CodeupClient, repo RepoConf
 				default:
 				}
 
-				merged, err := isBranchMerged(ctx, client, repo.Identity(), b, targetBranch, targetCommit)
+				merged, err := isBranchMerged(ctx, client, scanCtx, b)
 				resultCh <- branchResult{name: b.Name, merged: merged, err: err}
 			}(branch)
 		}
@@ -163,12 +175,12 @@ func listMergedBranches(ctx context.Context, client *CodeupClient, repo RepoConf
 
 		for result := range resultCh {
 			if result.err != nil {
-				printLine("    检查 %s 时出错: %v\n", result.name, result.err)
+				printLine("    %s\n", renderScanError(result.name, result.err))
 				continue
 			}
 			if result.merged {
 				mergedBranches = append(mergedBranches, result.name)
-				printLine("    发现已合并分支: %s\n", result.name)
+				printLine("    %s\n", renderMergedBranch(result.name))
 			}
 		}
 
@@ -229,12 +241,12 @@ func matchPattern(pattern, name string) bool {
 	return false
 }
 
-func isBranchMerged(ctx context.Context, client *CodeupClient, repositoryIdentity string, branch Branch, targetBranch, targetCommit string) (bool, error) {
-	if branch.Commit != nil && branch.Commit.ID == targetCommit {
+func isBranchMerged(ctx context.Context, client *CodeupClient, scanCtx branchScanContext, branch Branch) (bool, error) {
+	if branch.Commit != nil && branch.Commit.ID == scanCtx.targetCommit {
 		return false, nil
 	}
 
-	resp, err := client.GetCompareDetail(ctx, repositoryIdentity, targetBranch, branch.Name)
+	resp, err := client.GetCompareDetail(ctx, scanCtx.repositoryIdentity, scanCtx.targetBranch, branch.Name)
 	if err != nil {
 		return false, fmt.Errorf("比较分支: %w", err)
 	}
@@ -243,52 +255,4 @@ func isBranchMerged(ctx context.Context, client *CodeupClient, repositoryIdentit
 	}
 
 	return true, nil
-}
-
-func executeDeletions(opts TUIOptions, toDelete []Candidate) Result {
-	result := Result{}
-	semaphore := make(chan struct{}, 5)
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-
-	for _, candidate := range toDelete {
-		wg.Add(1)
-		go func(candidate Candidate) {
-			defer wg.Done()
-
-			select {
-			case <-opts.Ctx.Done():
-				mu.Lock()
-				result.Failed = append(result.Failed, FailedDeletion{Candidate: candidate, Error: opts.Ctx.Err()})
-				mu.Unlock()
-				return
-			case semaphore <- struct{}{}:
-				defer func() { <-semaphore }()
-			}
-
-			if opts.DryRun {
-				fmt.Printf("[DryRun] 将删除 %s: %s\n", candidate.RepoName, candidate.BranchName)
-				mu.Lock()
-				result.Success = append(result.Success, candidate)
-				mu.Unlock()
-				return
-			}
-
-			fmt.Printf("正在删除 %s: %s... ", candidate.RepoName, candidate.BranchName)
-			err := opts.Client.DeleteBranch(opts.Ctx, candidate.RepoID, candidate.BranchName)
-
-			mu.Lock()
-			if err != nil {
-				fmt.Printf("失败: %v\n", err)
-				result.Failed = append(result.Failed, FailedDeletion{Candidate: candidate, Error: err})
-			} else {
-				fmt.Println("成功")
-				result.Success = append(result.Success, candidate)
-			}
-			mu.Unlock()
-		}(candidate)
-	}
-
-	wg.Wait()
-	return result
 }
