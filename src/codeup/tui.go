@@ -466,7 +466,7 @@ func (m MainModel) View() string {
 	var s strings.Builder
 
 	// Header
-	header := fmt.Sprintf("Codeup 分支清理工具 | HTTP 请求: %d", m.opts.Client.RequestCount())
+	header := "Codeup 分支清理工具"
 	s.WriteString(headerStyle.Render(header))
 	s.WriteString("\n")
 
@@ -475,7 +475,7 @@ func (m MainModel) View() string {
 	s.WriteString("\n")
 
 	// Footer
-	s.WriteString(footerStyle.Render(m.renderHelp()))
+	s.WriteString(footerStyle.Render(m.renderFooter()))
 
 	return s.String()
 }
@@ -485,14 +485,14 @@ func (m MainModel) renderContent() string {
 	case StateMenu:
 		var sb strings.Builder
 		sb.WriteString(styleTitleText.Render("=== 主菜单 ===\n\n"))
-		options := []string{"1. 分支清理 (清理已合并的分支)", "2. 代码合并 (TODO: 合并 Prod 到 Master)"}
+		options := []string{"分支清理 (清理已合并的分支)", "代码合并 (TODO: 合并 Prod 到 Master)"}
 		for i, opt := range options {
-			cursor := " "
+			content := fmt.Sprintf("%d. %s", i+1, opt)
 			if m.menuCursor == i {
-				cursor = ">"
-				opt = styleAccentText.Render(opt)
+				sb.WriteString(styleAccentText.Render("> "+content) + "\n")
+			} else {
+				sb.WriteString("  " + content + "\n")
 			}
-			sb.WriteString(fmt.Sprintf("%s %s\n", cursor, opt))
 		}
 		return sb.String()
 	case StateRepoSelect:
@@ -511,6 +511,21 @@ func (m MainModel) renderContent() string {
 	default:
 		return ""
 	}
+}
+
+func (m MainModel) renderFooter() string {
+	var sb strings.Builder
+
+	// 帮助文本
+	sb.WriteString(m.renderHelp())
+
+	// 处理时（扫描、选择分支、删除中）显示 HTTP 请求数
+	if m.state > StateRepoSelect {
+		sb.WriteString("\n")
+		sb.WriteString(styleMutedText.Render(fmt.Sprintf("HTTP 请求: %d", m.opts.Client.RequestCount())))
+	}
+
+	return sb.String()
 }
 
 func (m MainModel) renderHelp() string {
