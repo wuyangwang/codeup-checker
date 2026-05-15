@@ -74,6 +74,10 @@ func (m RepoSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.confirmed = true
 				return m, tea.Quit
 			}
+
+		case key.Matches(msg, keys.Esc):
+			m.quitting = true
+			return m, tea.Quit
 		}
 	}
 	return m, nil
