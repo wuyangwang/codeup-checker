@@ -18,6 +18,15 @@ type RepoSelectorModel struct {
 	confirmed   bool
 }
 
+var repoTitleStyle = lipgloss.NewStyle().
+	Bold(true).
+	Foreground(lipgloss.Color(colorTitle)).
+	MarginBottom(1)
+
+var repoLineStyle = lipgloss.NewStyle().
+	Foreground(lipgloss.Color(colorTitle)).
+	Bold(true)
+
 func NewRepoSelectorModel(repos []RepoConfig) RepoSelectorModel {
 	return RepoSelectorModel{
 		repos:       repos,
@@ -100,11 +109,7 @@ func (m RepoSelectorModel) View() string {
 
 	var s strings.Builder
 
-	titleStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color(colorTitle)).
-		MarginBottom(1)
-	s.WriteString(titleStyle.Render("=== 请选择要扫描的仓库 ==="))
+	s.WriteString(repoTitleStyle.Render("=== 请选择要扫描的仓库 ==="))
 	s.WriteString("\n\n")
 
 	for i, repo := range m.repos {
@@ -121,10 +126,7 @@ func (m RepoSelectorModel) View() string {
 		line := fmt.Sprintf("%s[%s] %s", cursor, checked, repo.DisplayName())
 
 		if m.cursor == i {
-			lineStyle := lipgloss.NewStyle().
-				Foreground(lipgloss.Color(colorTitle)).
-				Bold(true)
-			line = lineStyle.Render(line)
+			line = repoLineStyle.Render(line)
 		}
 
 		s.WriteString(line)

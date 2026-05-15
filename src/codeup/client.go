@@ -50,11 +50,16 @@ type apiErrorResponse struct {
 }
 
 func NewCodeupClient(orgID, token string) *CodeupClient {
+	transport := &http.Transport{
+		MaxIdleConns:        100,
+		MaxIdleConnsPerHost: 20,
+		IdleConnTimeout:     90 * time.Second,
+	}
 	return &CodeupClient{
 		baseURL: codeupBaseURL,
 		orgID:   orgID,
 		token:   token,
-		http:    &http.Client{Timeout: 30 * time.Second},
+		http:    &http.Client{Timeout: 30 * time.Second, Transport: transport},
 	}
 }
 
@@ -157,7 +162,9 @@ func (c *CodeupClient) doJSON(ctx context.Context, method, path string, query ur
 
 	if resp.StatusCode >= 400 {
 		var apiErr apiErrorResponse
-		_ = json.NewDecoder(resp.Body).Decode(&apiErr)
+		if decodeErr := json.NewDecoder(resp.Body).Decode(&apiErr); decodeErr != nil {
+			return fmt.Errorf("HTTP %d (错误响应解析失败: %v)", resp.StatusCode, decodeErr)
+		}
 		if apiErr.Error != "" || apiErr.Message != "" {
 			return fmt.Errorf("HTTP %d: %s%s", resp.StatusCode, apiErr.Error, apiErr.Message)
 		}

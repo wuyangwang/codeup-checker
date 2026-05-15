@@ -463,6 +463,31 @@ var (
 			Border(lipgloss.NormalBorder(), true, false, false, false).
 			BorderForeground(lipgloss.Color(colorMuted)).
 			MarginTop(1)
+
+	branchTitleStyle = lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color(colorTitle)).
+				MarginBottom(1)
+
+	branchLineStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(colorTitle)).
+			Bold(true)
+
+	branchCountStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(colorAccent)).
+				Bold(true)
+
+	branchDoneStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(colorSuccess)).
+			Bold(true)
+
+	branchConfirmStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(colorWarn)).
+				Bold(true)
+
+	branchProgressStyle = lipgloss.NewStyle().
+				Foreground(lipgloss.Color(colorAccent)).
+				Bold(true)
 )
 
 func (m MainModel) View() string {
@@ -588,11 +613,7 @@ func StartMainTUI(cfg *Config, opts TUIOptions) (Result, error) {
 func (m BranchModel) View() string {
 	var s strings.Builder
 
-	titleStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color(colorTitle)).
-		MarginBottom(1)
-	s.WriteString(titleStyle.Render("=== 可删除的分支（已合并到 master）==="))
+	s.WriteString(branchTitleStyle.Render("=== 可删除的分支 ==="))
 	s.WriteString("\n\n")
 
 	if len(m.candidates) == 0 {
@@ -614,10 +635,7 @@ func (m BranchModel) View() string {
 		line := fmt.Sprintf("%s[%s] %s: %s", cursor, checked, candidate.RepoName, candidate.BranchName)
 
 		if m.cursor == i && m.mode == ModeNormal {
-			lineStyle := lipgloss.NewStyle().
-				Foreground(lipgloss.Color(colorTitle)).
-				Bold(true)
-			line = lineStyle.Render(line)
+			line = branchLineStyle.Render(line)
 		}
 
 		s.WriteString(line)
@@ -635,39 +653,27 @@ func (m BranchModel) View() string {
 			}
 		}
 		if selectedCount > 0 {
-			countStyle := lipgloss.NewStyle().
-				Foreground(lipgloss.Color(colorAccent)).
-				Bold(true)
-			s.WriteString(countStyle.Render(fmt.Sprintf("已选择 %d 个分支", selectedCount)))
+			s.WriteString(branchCountStyle.Render(fmt.Sprintf("已选择 %d 个分支", selectedCount)))
 			s.WriteString("\n")
 		}
 
 		if m.deleteDone {
-			doneStyle := lipgloss.NewStyle().
-				Foreground(lipgloss.Color(colorSuccess)).
-				Bold(true)
-			s.WriteString(doneStyle.Render(fmt.Sprintf("\n删除完成: 成功 %d, 失败 %d",
+			s.WriteString(branchDoneStyle.Render(fmt.Sprintf("\n删除完成: 成功 %d, 失败 %d",
 				len(m.result.Success), len(m.result.Failed))))
 			s.WriteString("\n")
 		}
 
 	case ModeConfirm:
-		confirmStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color(colorWarn)).
-			Bold(true)
-		s.WriteString(confirmStyle.Render("确认删除选中的分支？"))
+		s.WriteString(branchConfirmStyle.Render("确认删除选中的分支？"))
 		s.WriteString("\n")
 
 	case ModeDeleting:
-		progressStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color(colorAccent)).
-			Bold(true)
 		barWidth := 40
 		progress := float64(m.deleting) / float64(m.deleteTotal)
 		filled := int(progress * float64(barWidth))
 
 		bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
-		s.WriteString(progressStyle.Render(fmt.Sprintf("删除进度: [%s] %d/%d", bar, m.deleting, m.deleteTotal)))
+		s.WriteString(branchProgressStyle.Render(fmt.Sprintf("删除进度: [%s] %d/%d", bar, m.deleting, m.deleteTotal)))
 		s.WriteString("\n")
 	}
 

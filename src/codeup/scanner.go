@@ -16,6 +16,14 @@ func ScanRepositoriesAsync(ctx context.Context, client *CodeupClient, cfg *Confi
 		errs       []error
 	)
 
+	// msgMu 保护 msgChan 写入，避免多 goroutine 并发写入竞争
+	var msgMu sync.Mutex
+	sendMsg := func(msg tea.Msg) {
+		msgMu.Lock()
+		defer msgMu.Unlock()
+		msgChan <- msg
+	}
+
 	scanSem := make(chan struct{}, cfg.GetScanConcurrency())
 	var wg sync.WaitGroup
 
@@ -35,12 +43,10 @@ func ScanRepositoriesAsync(ctx context.Context, client *CodeupClient, cfg *Confi
 			default:
 			}
 
-			msgChan <- ScanProgressMsg{Message: renderRepoChecking(r.DisplayName())}
+			sendMsg(ScanProgressMsg{Message: renderRepoChecking(r.DisplayName())})
 
-			// We need a local printLine that sends messages
 			localPrintLine := func(format string, a ...any) {
-				// 移除格式化字符串末尾的换行符，由 TUI 统一处理显示
-				msgChan <- ScanProgressMsg{Message: fmt.Sprintf(format, a...)}
+				sendMsg(ScanProgressMsg{Message: fmt.Sprintf(format, a...)})
 			}
 
 			branches, err := listMergedBranches(ctx, client, r, cfg, localPrintLine)
@@ -48,7 +54,7 @@ func ScanRepositoriesAsync(ctx context.Context, client *CodeupClient, cfg *Confi
 				mu.Lock()
 				errs = append(errs, fmt.Errorf("扫描 %s: %w", r.DisplayName(), err))
 				mu.Unlock()
-				msgChan <- ScanProgressMsg{Message: renderScanError(r.DisplayName(), err)}
+				sendMsg(ScanProgressMsg{Message: renderScanError(r.DisplayName(), err)})
 				return
 			}
 
@@ -71,7 +77,7 @@ func ScanRepositoriesAsync(ctx context.Context, client *CodeupClient, cfg *Confi
 		finalErr = fmt.Errorf("扫描完成但有 %d 个错误: %w", len(errs), errors.Join(errs...))
 	}
 
-	msgChan <- ScanDoneMsg{Candidates: candidates, Error: finalErr}
+	sendMsg(ScanDoneMsg{Candidates: candidates, Error: finalErr})
 }
 
 type ScanProgressMsg struct {
@@ -159,14 +165,25 @@ func listMergedBranches(ctx context.Context, client *CodeupClient, repo RepoConf
 			}(branch)
 		}
 
+		// 同步等待所有 goroutine 完成，避免泄漏
+		done := make(chan struct{})
 		go func() {
 			wg.Wait()
-			close(resultCh)
+			close(done)
 		}()
+
+		// 等待所有比较完成或上下文取消
+		select {
+		case <-done:
+			close(resultCh)
+		case <-ctx.Done():
+			// 等待所有 goroutine 退出后再返回，避免泄漏
+			<-done
+			close(resultCh)
+		}
 
 		for result := range resultCh {
 			if result.err != nil {
-				// 移除末尾换行符
 				printLine("%s", renderScanError(result.name, result.err))
 				continue
 			}
@@ -175,7 +192,6 @@ func listMergedBranches(ctx context.Context, client *CodeupClient, repo RepoConf
 					printLine("")
 				}
 				mergedBranches = append(mergedBranches, result.name)
-				// 移除末尾换行符
 				printLine("%s", renderMergedBranch(result.name))
 			}
 		}
@@ -200,16 +216,16 @@ func fetchTargetCommit(ctx context.Context, client *CodeupClient, repoIdentity, 
 	return branch.Commit.ID, nil
 }
 
-func isProtectedBranch(name string, branch Branch) bool {
-	protectedNames := map[string]bool{
-		"master":     true,
-		"main":       true,
-		"develop":    true,
-		"test":       true,
-		"production": true,
-		"release":    true,
-	}
+var protectedNames = map[string]bool{
+	"master":     true,
+	"main":       true,
+	"develop":    true,
+	"test":       true,
+	"production": true,
+	"release":    true,
+}
 
+func isProtectedBranch(name string, branch Branch) bool {
 	if protectedNames[name] {
 		return true
 	}
