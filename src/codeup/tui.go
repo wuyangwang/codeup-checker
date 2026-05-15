@@ -471,12 +471,7 @@ func (m MainModel) View() string {
 	s.WriteString("\n")
 
 	// Body
-	content := m.renderContent()
-	// 在菜单和仓库选择状态下，将帮助信息直接附在内容后，不使用边框页脚
-	if m.state <= StateRepoSelect {
-		content += "\n" + m.renderFooter()
-	}
-	s.WriteString(contentStyle.Render(content))
+	s.WriteString(contentStyle.Render(m.renderContent()))
 	s.WriteString("\n")
 
 	// Footer (仅在扫描及后续阶段显示带边框的页脚)
@@ -494,12 +489,16 @@ func (m MainModel) renderContent() string {
 		sb.WriteString(styleTitleText.Render("=== 主菜单 ===\n\n"))
 		options := []string{"分支清理 (清理已合并的分支)", "代码合并 (TODO: 合并 Prod 到 Master)"}
 		for i, opt := range options {
-			content := fmt.Sprintf("%d. %s", i+1, opt)
+			num := fmt.Sprintf("%d.", i+1)
+			cursor := "  "
 			if m.menuCursor == i {
-				sb.WriteString(styleAccentText.Render("> "+content) + "\n")
-			} else {
-				sb.WriteString("  " + content + "\n")
+				cursor = "> "
 			}
+			line := fmt.Sprintf("%s %s%s", num, cursor, opt)
+			if m.menuCursor == i {
+				line = styleAccentText.Render(line)
+			}
+			sb.WriteString(line + "\n")
 		}
 		return sb.String()
 	case StateRepoSelect:
