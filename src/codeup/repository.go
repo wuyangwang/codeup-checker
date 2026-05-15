@@ -7,9 +7,9 @@ import (
 	"strings"
 )
 
-func ResolveRepositories(ctx context.Context, client *CodeupClient, cfg *Config) error {
-	for i := range cfg.Repositories {
-		repo := &cfg.Repositories[i]
+func ResolveRepositories(ctx context.Context, client *CodeupClient, repos []RepoConfig) error {
+	for i := range repos {
+		repo := &repos[i]
 		if repo.ID != "" {
 			if repo.Name == "" {
 				repo.Name = repo.ID

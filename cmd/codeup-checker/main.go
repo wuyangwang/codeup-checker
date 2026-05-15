@@ -99,12 +99,20 @@ func main() {
 	}
 
 	client := codeup.NewCodeupClient(orgId, token)
-	if err := codeup.ResolveRepositories(ctx, client, cfg); err != nil {
+	selectedRepos, err := codeup.StartRepoSelectorTUI(cfg.Repositories)
+	if err != nil {
+		if err.Error() == "用户退出" {
+			return
+		}
+		codeup.Fatal("选择仓库失败: %v", err)
+	}
+
+	if err := codeup.ResolveRepositories(ctx, client, selectedRepos); err != nil {
 		codeup.Fatal("解析仓库失败: %v", err)
 	}
 
-	fmt.Printf("%s\n\n", codeup.RenderScanStart(len(cfg.Repositories)))
-	candidates, err := codeup.ScanRepositories(ctx, client, cfg)
+	fmt.Printf("%s\n\n", codeup.RenderScanStart(len(selectedRepos)))
+	candidates, err := codeup.ScanRepositories(ctx, client, cfg, selectedRepos)
 	if err != nil {
 		codeup.Fatal("扫描仓库失败: %v", err)
 	}

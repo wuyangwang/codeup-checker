@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func ScanRepositories(ctx context.Context, client *CodeupClient, cfg *Config) ([]Candidate, error) {
+func ScanRepositories(ctx context.Context, client *CodeupClient, cfg *Config, repos []RepoConfig) ([]Candidate, error) {
 	var (
 		mu         sync.Mutex
 		candidates []Candidate
@@ -42,7 +42,7 @@ func ScanRepositories(ctx context.Context, client *CodeupClient, cfg *Config) ([
 	scanSem := make(chan struct{}, cfg.GetScanConcurrency())
 	var wg sync.WaitGroup
 
-	for _, repo := range cfg.Repositories {
+	for _, repo := range repos {
 		wg.Add(1)
 		scanSem <- struct{}{}
 		go func(r RepoConfig) {
