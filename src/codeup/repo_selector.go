@@ -19,15 +19,10 @@ type RepoSelectorModel struct {
 }
 
 func NewRepoSelectorModel(repos []RepoConfig) RepoSelectorModel {
-	selected := make(map[int]bool)
-	// Default select all
-	for i := range repos {
-		selected[i] = true
-	}
 	return RepoSelectorModel{
 		repos:       repos,
-		selected:    selected,
-		allSelected: true,
+		selected:    make(map[int]bool),
+		allSelected: false,
 	}
 }
 
