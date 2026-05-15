@@ -37,6 +37,7 @@ type Branch struct {
 	Commit    *struct {
 		ID      string `json:"id"`
 		ShortID string `json:"short_id"`
+		Title   string `json:"title"`
 	} `json:"commit"`
 }
 

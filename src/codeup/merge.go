@@ -136,8 +136,19 @@ func (m MergeModel) startCreateChangeRequest() tea.Msg {
 
 	repoIdentity := repositoryIdentity(repository)
 
+	commitTitle := ""
+	sourceBranch, err := m.opts.Client.GetBranch(ctx, repoIdentity, m.sourceBranch)
+	if err == nil && sourceBranch.Commit != nil {
+		commitTitle = sourceBranch.Commit.Title
+	}
+
+	title := commitTitle
+	if title == "" {
+		title = fmt.Sprintf("Merge %s to %s", m.sourceBranch, m.targetBranch)
+	}
+
 	req := CreateChangeRequestReq{
-		Title:           fmt.Sprintf("Merge %s to %s", m.sourceBranch, m.targetBranch),
+		Title:           title,
 		Description:     fmt.Sprintf("Auto-merge from %s to %s", m.sourceBranch, m.targetBranch),
 		SourceBranch:    m.sourceBranch,
 		TargetBranch:    m.targetBranch,
@@ -247,7 +258,6 @@ func (m MergeModel) startMergeOrReview() (MergeModel, tea.Cmd) {
 		if needReview {
 			reviewReq := ReviewChangeRequestReq{
 				ReviewOpinion: "PASS",
-				ReviewComment: "Auto-approved by codeup-checker",
 			}
 			if err := m.opts.Client.ReviewChangeRequest(ctx, repoID, m.cr.LocalID, reviewReq); err != nil {
 				m.msgChan <- MergeDoneMsg{Success: false, Error: fmt.Errorf("review failed: %w", err)}
@@ -257,7 +267,6 @@ func (m MergeModel) startMergeOrReview() (MergeModel, tea.Cmd) {
 
 		mergeReq := MergeChangeRequestReq{
 			MergeType:          "no-fast-forward",
-			MergeMessage:       fmt.Sprintf("Merge %s to %s", m.sourceBranch, m.targetBranch),
 			RemoveSourceBranch: false,
 		}
 		_, err := m.opts.Client.MergeChangeRequest(ctx, repoID, m.cr.LocalID, mergeReq)
