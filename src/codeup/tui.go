@@ -455,7 +455,7 @@ var (
 			MarginTop(1)
 
 	contentStyle = lipgloss.NewStyle().
-			Padding(0, 1)
+			Padding(0, 0)
 )
 
 func (m MainModel) View() string {
@@ -471,10 +471,11 @@ func (m MainModel) View() string {
 	s.WriteString("\n")
 
 	// Body
-	s.WriteString(contentStyle.Render(m.renderContent()))
+	content := m.renderContent()
+	s.WriteString(contentStyle.Render(content))
 	s.WriteString("\n")
 
-	// Footer (仅在扫描及后续阶段显示带边框的页脚)
+	// Footer (仅在扫描及后续阶段显示)
 	if m.state > StateRepoSelect {
 		s.WriteString(footerStyle.Render(m.renderFooter()))
 	}
@@ -486,19 +487,21 @@ func (m MainModel) renderContent() string {
 	switch m.state {
 	case StateMenu:
 		var sb strings.Builder
-		sb.WriteString(styleTitleText.Render("=== 主菜单 ===\n\n"))
+		sb.WriteString(styleTitleText.Render("=== 主菜单 ==="))
+		sb.WriteString("\n\n")
 		options := []string{"分支清理 (清理已合并的分支)", "代码合并 (TODO: 合并 Prod 到 Master)"}
 		for i, opt := range options {
-			num := fmt.Sprintf("%d.", i+1)
+			num := fmt.Sprintf("%d. ", i+1)
 			cursor := "  "
 			if m.menuCursor == i {
 				cursor = "> "
 			}
-			line := fmt.Sprintf("%s %s%s", num, cursor, opt)
+			line := num + cursor + opt
 			if m.menuCursor == i {
-				line = styleAccentText.Render(line)
+				sb.WriteString(styleAccentText.Render(line) + "\n")
+			} else {
+				sb.WriteString(line + "\n")
 			}
-			sb.WriteString(line + "\n")
 		}
 		return sb.String()
 	case StateRepoSelect:
@@ -532,11 +535,9 @@ func (m MainModel) renderFooter() string {
 	// 帮助文本
 	sb.WriteString(m.renderHelp())
 
-	// 处理时（扫描、选择分支、删除中）显示 HTTP 请求数
-	if m.state > StateRepoSelect {
-		sb.WriteString("\n")
-		sb.WriteString(styleMutedText.Render(fmt.Sprintf("HTTP 请求: %d", m.opts.Client.RequestCount())))
-	}
+	// 处理时显示 HTTP 请求数
+	sb.WriteString("\n")
+	sb.WriteString(styleMutedText.Render(fmt.Sprintf("HTTP 请求: %d", m.opts.Client.RequestCount())))
 
 	return sb.String()
 }
@@ -586,9 +587,9 @@ func (m BranchModel) View() string {
 	}
 
 	for i, candidate := range m.candidates {
-		cursor := " "
+		cursor := "  "
 		if m.cursor == i && m.mode == ModeNormal {
-			cursor = ">"
+			cursor = "> "
 		}
 
 		checked := " "
@@ -596,7 +597,7 @@ func (m BranchModel) View() string {
 			checked = "✓"
 		}
 
-		line := fmt.Sprintf("%s [%s] %s: %s", cursor, checked, candidate.RepoName, candidate.BranchName)
+		line := fmt.Sprintf("%s[%s] %s: %s", cursor, checked, candidate.RepoName, candidate.BranchName)
 
 		if m.cursor == i && m.mode == ModeNormal {
 			lineStyle := lipgloss.NewStyle().

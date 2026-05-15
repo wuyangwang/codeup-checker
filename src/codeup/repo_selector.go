@@ -104,9 +104,9 @@ func (m RepoSelectorModel) View() string {
 	s.WriteString("\n\n")
 
 	for i, repo := range m.repos {
-		cursor := " "
+		cursor := "  "
 		if m.cursor == i {
-			cursor = ">"
+			cursor = "> "
 		}
 
 		checked := " "
@@ -114,7 +114,7 @@ func (m RepoSelectorModel) View() string {
 			checked = "✓"
 		}
 
-		line := fmt.Sprintf("%s [%s] %s", cursor, checked, repo.DisplayName())
+		line := fmt.Sprintf("%s[%s] %s", cursor, checked, repo.DisplayName())
 
 		if m.cursor == i {
 			lineStyle := lipgloss.NewStyle().
