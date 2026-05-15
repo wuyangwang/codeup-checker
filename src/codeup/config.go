@@ -51,12 +51,12 @@ func GetConfigPath() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("获取配置目录失败: %w", err)
 	}
-	
+
 	appDir := filepath.Join(configDir, "codeup-checker")
 	if err := os.MkdirAll(appDir, 0755); err != nil {
 		return "", fmt.Errorf("创建配置目录失败: %w", err)
 	}
-	
+
 	return filepath.Join(appDir, "config.yaml"), nil
 }
 
@@ -84,11 +84,11 @@ excludePatterns:
 repositories:
   - name: your-repo-name
 `
-	
+
 	if err := os.WriteFile(path, []byte(defaultConfig), 0644); err != nil {
 		return fmt.Errorf("创建默认配置文件失败: %w", err)
 	}
-	
+
 	return nil
 }
 

@@ -99,40 +99,17 @@ func main() {
 	}
 
 	client := codeup.NewCodeupClient(orgId, token)
-	selectedRepos, err := codeup.StartRepoSelectorTUI(cfg.Repositories)
-	if err != nil {
-		if err.Error() == "用户退出" {
-			return
-		}
-		codeup.Fatal("选择仓库失败: %v", err)
-	}
 
-	if err := codeup.ResolveRepositories(ctx, client, selectedRepos); err != nil {
-		codeup.Fatal("解析仓库失败: %v", err)
-	}
-
-	fmt.Printf("%s\n\n", codeup.RenderScanStart(len(selectedRepos)))
-	candidates, err := codeup.ScanRepositories(ctx, client, cfg, selectedRepos)
-	if err != nil {
-		codeup.Fatal("扫描仓库失败: %v", err)
-	}
-	if len(candidates) == 0 {
-		fmt.Println("未找到已合并的分支。")
-		return
-	}
-
-	result, err := codeup.StartTUI(candidates, codeup.TUIOptions{
+	result, err := codeup.StartMainTUI(cfg, codeup.TUIOptions{
 		Client: client,
 		Ctx:    ctx,
 		DryRun: os.Getenv("DRY_RUN") == "true",
 	})
 	if err != nil {
-		codeup.Fatal("TUI 错误: %v", err)
-	}
-
-	if len(result.Success) == 0 && len(result.Failed) == 0 {
-		fmt.Println("未选择要删除的分支。")
-		return
+		if err.Error() == "用户退出" {
+			return
+		}
+		codeup.Fatal("运行 TUI 失败: %v", err)
 	}
 
 	codeup.DisplaySummary(result)

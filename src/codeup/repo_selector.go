@@ -79,8 +79,18 @@ func (m RepoSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+func (m RepoSelectorModel) GetSelected() []RepoConfig {
+	var selectedRepos []RepoConfig
+	for i, selected := range m.selected {
+		if selected {
+			selectedRepos = append(selectedRepos, m.repos[i])
+		}
+	}
+	return selectedRepos
+}
+
 func (m RepoSelectorModel) View() string {
-	if m.quitting || m.confirmed {
+	if m.quitting {
 		return ""
 	}
 

@@ -54,14 +54,18 @@ codeup-checker/
 - `findRepositoryByName()`: 按名称查找仓库
 
 ### 4. 分支扫描 (src/codeup/scanner.go)
-- `ScanRepositories()`: 并发扫描仓库分支
+- `ScanRepositoriesAsync()`: 异步并发扫描仓库分支，通过 channel 推送进度
 - `listMergedBranches()`: 列出已合并分支
-- `executeDeletions()`: 执行分支删除
+- `runDeletionAsync()`: 异步执行分支删除
 
 ### 5. TUI 界面 (src/codeup/tui.go)
-- `Model`: TUI 数据模型
-- `StartTUI()`: 启动交互式界面
-- 支持键盘操作：选择、全选、删除确认
+- `MainModel`: 统一应用状态机，管理从菜单到删除的所有阶段
+- `AppState`: 应用状态（菜单、仓库选择、扫描中、分支选择、TODO）
+- `BranchModel`: 分支选择子模型
+- `RepoSelectorModel`: 仓库选择子模型 (src/codeup/repo_selector.go)
+- `StartMainTUI()`: 启动全局全屏交互界面
+- 布局设计：使用 Header、Body、Footer 三段式布局样式渲染界面
+- 支持键盘操作：全选、多选、确认删除、状态切换、目录打开等
 
 ### 6. 类型定义 (src/codeup/types.go)
 - `Config`: 配置结构
@@ -144,3 +148,13 @@ A: 运行程序会自动创建，或手动创建在 `~/.config/codeup-checker/co
 - [Codeup OpenAPI 文档](https://help.aliyun.com/document_detail/codeup-api.html)
 - [Bubble Tea 文档](https://github.com/charmbracelet/bubbletea)
 - [Lip Gloss 文档](https://github.com/charmbracelet/lipgloss)
+
+## 工作流规范
+
+在完成代码修改任务后，必须执行以下步骤进行验证和提交：
+
+1. **格式化**: 执行 `go fmt ./...` 确保代码风格一致。
+2. **静态检查**: 执行 `go vet ./...` 检查潜在问题。
+3. **单元测试**: 执行 `go test ./...` 确保功能正确且无回归。
+4. **代码提交**: 使用 `git add .` 和 `git commit -m "..."` 提交更改。
+5. **禁用自动推送**: 严禁执行 `git push`，除非用户明确要求。

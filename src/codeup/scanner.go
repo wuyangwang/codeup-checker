@@ -5,39 +5,16 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"time"
+
+	"github.com/charmbracelet/bubbletea"
 )
 
-func ScanRepositories(ctx context.Context, client *CodeupClient, cfg *Config, repos []RepoConfig) ([]Candidate, error) {
+func ScanRepositoriesAsync(ctx context.Context, client *CodeupClient, cfg *Config, repos []RepoConfig, msgChan chan tea.Msg) {
 	var (
 		mu         sync.Mutex
 		candidates []Candidate
 		errs       []error
-		outMu      sync.Mutex
 	)
-
-	done := make(chan struct{})
-	go func() {
-		ticker := time.NewTicker(300 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-done:
-				return
-			case <-ticker.C:
-				outMu.Lock()
-				fmt.Printf("\r\033[K%s", renderHTTPCount(client.RequestCount()))
-				outMu.Unlock()
-			}
-		}
-	}()
-
-	printLine := func(format string, a ...any) {
-		outMu.Lock()
-		fmt.Printf("\r\033[K")
-		fmt.Printf(format, a...)
-		outMu.Unlock()
-	}
 
 	scanSem := make(chan struct{}, cfg.GetScanConcurrency())
 	var wg sync.WaitGroup
@@ -58,12 +35,19 @@ func ScanRepositories(ctx context.Context, client *CodeupClient, cfg *Config, re
 			default:
 			}
 
-			printLine("%s\n", renderRepoChecking(r.DisplayName()))
-			branches, err := listMergedBranches(ctx, client, r, cfg, printLine)
+			msgChan <- ScanProgressMsg{Message: renderRepoChecking(r.DisplayName())}
+
+			// We need a local printLine that sends messages
+			localPrintLine := func(format string, a ...any) {
+				msgChan <- ScanProgressMsg{Message: fmt.Sprintf(format, a...)}
+			}
+
+			branches, err := listMergedBranches(ctx, client, r, cfg, localPrintLine)
 			if err != nil {
 				mu.Lock()
 				errs = append(errs, fmt.Errorf("扫描 %s: %w", r.DisplayName(), err))
 				mu.Unlock()
+				msgChan <- ScanProgressMsg{Message: renderScanError(r.DisplayName(), err)}
 				return
 			}
 
@@ -80,16 +64,22 @@ func ScanRepositories(ctx context.Context, client *CodeupClient, cfg *Config, re
 	}
 
 	wg.Wait()
-	close(done)
 
-	outMu.Lock()
-	fmt.Printf("\r\033[K")
-	outMu.Unlock()
-
+	var finalErr error
 	if len(errs) > 0 {
-		return candidates, fmt.Errorf("扫描完成但有 %d 个错误: %w", len(errs), errors.Join(errs...))
+		finalErr = fmt.Errorf("扫描完成但有 %d 个错误: %w", len(errs), errors.Join(errs...))
 	}
-	return candidates, nil
+
+	msgChan <- ScanDoneMsg{Candidates: candidates, Error: finalErr}
+}
+
+type ScanProgressMsg struct {
+	Message string
+}
+
+type ScanDoneMsg struct {
+	Candidates []Candidate
+	Error      error
 }
 
 type branchResult struct {

@@ -29,7 +29,6 @@ func ResolveRepositories(ctx context.Context, client *CodeupClient, repos []Repo
 		if repo.Name == "" {
 			repo.Name = repositoryDisplayName(resolved)
 		}
-		fmt.Printf("仓库解析: %s -> %s\n", repositoryDisplayName(resolved), repo.ID)
 	}
 	return nil
 }

@@ -12,6 +12,17 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+// AppState 定义应用状态
+type AppState int
+
+const (
+	StateMenu AppState = iota
+	StateRepoSelect
+	StateScanning
+	StateBranchSelect
+	StateFutureTODO
+)
+
 type Mode int
 
 const (
@@ -30,6 +41,7 @@ type keyMap struct {
 	Execute key.Binding
 	Open    key.Binding
 	Esc     key.Binding
+	Enter   key.Binding
 }
 
 var keys = keyMap{
@@ -69,6 +81,10 @@ var keys = keyMap{
 		key.WithKeys("esc"),
 		key.WithHelp("ESC", "取消"),
 	),
+	Enter: key.NewBinding(
+		key.WithKeys("enter"),
+		key.WithHelp("ENTER", "确认"),
+	),
 }
 
 type TUIOptions struct {
@@ -89,7 +105,8 @@ type DeletionDoneMsg struct {
 	Result Result
 }
 
-type Model struct {
+// BranchModel 分支选择子模型
+type BranchModel struct {
 	candidates  []Candidate
 	selected    map[int]bool
 	cursor      int
@@ -104,8 +121,8 @@ type Model struct {
 	msgChan     chan tea.Msg
 }
 
-func NewModel(candidates []Candidate, opts TUIOptions) Model {
-	return Model{
+func NewBranchModel(candidates []Candidate, opts TUIOptions) BranchModel {
+	return BranchModel{
 		candidates:  candidates,
 		selected:    make(map[int]bool),
 		cursor:      0,
@@ -115,20 +132,14 @@ func NewModel(candidates []Candidate, opts TUIOptions) Model {
 	}
 }
 
-func (m Model) Init() tea.Cmd {
+func (m BranchModel) Init() tea.Cmd {
 	return nil
 }
 
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m BranchModel) Update(msg tea.Msg) (BranchModel, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch {
-		case key.Matches(msg, keys.Quit):
-			if m.mode != ModeDeleting {
-				m.quitting = true
-				return m, tea.Quit
-			}
-
 		case key.Matches(msg, keys.Up):
 			if m.mode == ModeNormal && m.cursor > 0 {
 				m.cursor--
@@ -177,8 +188,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.mode == ModeConfirm {
 				m.mode = ModeNormal
 			}
-		case key.Matches(msg, keys.Open):
-			OpenConfigDir()
 		}
 
 	case DeletionProgressMsg:
@@ -216,13 +225,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) listen() tea.Cmd {
+func (m BranchModel) listen() tea.Cmd {
 	return func() tea.Msg {
 		return <-m.msgChan
 	}
 }
 
-func (m Model) startDeletion() (tea.Model, tea.Cmd) {
+func (m BranchModel) startDeletion() (BranchModel, tea.Cmd) {
 	var toDelete []Candidate
 	for i, selected := range m.selected {
 		if selected {
@@ -300,18 +309,241 @@ func runDeletionAsync(opts TUIOptions, toDelete []Candidate, msgChan chan tea.Ms
 	msgChan <- DeletionDoneMsg{Result: result}
 }
 
-func (m Model) View() string {
+// MainModel 统一状态机模型
+type MainModel struct {
+	state       AppState
+	repoModel   RepoSelectorModel
+	branchModel BranchModel
+	scanLogs    []string
+	opts        TUIOptions
+	config      *Config
+	err         error
+	quitting    bool
+	msgChan     chan tea.Msg
+	menuCursor  int
+}
+
+func NewMainModel(cfg *Config, opts TUIOptions) MainModel {
+	return MainModel{
+		state:      StateMenu,
+		repoModel:  NewRepoSelectorModel(cfg.Repositories),
+		opts:       opts,
+		config:     cfg,
+		msgChan:    make(chan tea.Msg, 100),
+		menuCursor: 0,
+	}
+}
+
+func (m MainModel) Init() tea.Cmd {
+	return nil
+}
+
+func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		if key.Matches(msg, keys.Quit) {
+			m.quitting = true
+			return m, tea.Quit
+		}
+		if key.Matches(msg, keys.Open) {
+			OpenConfigDir()
+		}
+
+		if m.state == StateMenu {
+			switch {
+			case key.Matches(msg, keys.Up):
+				if m.menuCursor > 0 {
+					m.menuCursor--
+				}
+			case key.Matches(msg, keys.Down):
+				if m.menuCursor < 1 {
+					m.menuCursor++
+				}
+			case key.Matches(msg, keys.Enter):
+				if m.menuCursor == 0 {
+					m.state = StateRepoSelect
+				} else {
+					m.state = StateFutureTODO
+				}
+			case key.Matches(msg, keys.Esc):
+				m.quitting = true
+				return m, tea.Quit
+			}
+			return m, nil
+		}
+
+		if m.state == StateFutureTODO {
+			if key.Matches(msg, keys.Esc) {
+				m.state = StateMenu
+			}
+			return m, nil
+		}
+
+	case ScanProgressMsg:
+		m.scanLogs = append(m.scanLogs, msg.Message)
+		if len(m.scanLogs) > 15 {
+			m.scanLogs = m.scanLogs[len(m.scanLogs)-15:]
+		}
+		return m, m.listenScan()
+
+	case ScanDoneMsg:
+		if msg.Error != nil {
+			m.err = msg.Error
+		}
+		if len(msg.Candidates) == 0 && m.err == nil {
+			m.scanLogs = append(m.scanLogs, styleInfoText.Render("未找到已合并的分支。"))
+		}
+		m.branchModel = NewBranchModel(msg.Candidates, m.opts)
+		m.state = StateBranchSelect
+		return m, nil
+	}
+
+	var cmd tea.Cmd
+	switch m.state {
+	case StateRepoSelect:
+		var newRepoModel tea.Model
+		newRepoModel, cmd = m.repoModel.Update(msg)
+		m.repoModel = newRepoModel.(RepoSelectorModel)
+		if m.repoModel.confirmed {
+			selected := m.repoModel.GetSelected()
+			m.state = StateScanning
+			return m, m.startScanning(selected)
+		}
+		if m.repoModel.quitting {
+			m.state = StateMenu
+			m.repoModel.quitting = false
+			return m, nil
+		}
+
+	case StateBranchSelect:
+		m.branchModel, cmd = m.branchModel.Update(msg)
+	}
+
+	return m, cmd
+}
+
+func (m MainModel) listenScan() tea.Cmd {
+	return func() tea.Msg {
+		return <-m.msgChan
+	}
+}
+
+func (m MainModel) startScanning(repos []RepoConfig) tea.Cmd {
+	return func() tea.Msg {
+		// 先解析仓库
+		if err := ResolveRepositories(m.opts.Ctx, m.opts.Client, repos); err != nil {
+			return ScanDoneMsg{Error: err}
+		}
+		// 开始异步扫描
+		go ScanRepositoriesAsync(m.opts.Ctx, m.opts.Client, m.config, repos, m.msgChan)
+		return <-m.msgChan
+	}
+}
+
+var (
+	headerStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(colorTitle)).
+			Bold(true).
+			MarginBottom(1).
+			Border(lipgloss.NormalBorder(), false, false, true, false).
+			BorderForeground(lipgloss.Color(colorMuted))
+
+	footerStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color(colorMuted)).
+			Border(lipgloss.NormalBorder(), true, false, false, false).
+			BorderForeground(lipgloss.Color(colorMuted)).
+			MarginTop(1)
+
+	contentStyle = lipgloss.NewStyle().
+			Padding(0, 1)
+)
+
+func (m MainModel) View() string {
 	if m.quitting {
-		return ""
+		return "正在退出...\n"
 	}
 
 	var s strings.Builder
 
-	reqStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colorMuted)).
-		MarginBottom(1)
-	s.WriteString(reqStyle.Render(renderHTTPCount(m.opts.Client.RequestCount())))
+	// Header
+	header := fmt.Sprintf("Codeup 分支清理工具 | HTTP 请求: %d", m.opts.Client.RequestCount())
+	s.WriteString(headerStyle.Render(header))
 	s.WriteString("\n")
+
+	// Body
+	s.WriteString(contentStyle.Render(m.renderContent()))
+	s.WriteString("\n")
+
+	// Footer
+	s.WriteString(footerStyle.Render(m.renderHelp()))
+
+	return s.String()
+}
+
+func (m MainModel) renderContent() string {
+	switch m.state {
+	case StateMenu:
+		var sb strings.Builder
+		sb.WriteString(styleTitleText.Render("=== 主菜单 ===\n\n"))
+		options := []string{"1. 分支清理 (清理已合并的分支)", "2. 代码合并 (TODO: 合并 Prod 到 Master)"}
+		for i, opt := range options {
+			cursor := " "
+			if m.menuCursor == i {
+				cursor = ">"
+				opt = styleAccentText.Render(opt)
+			}
+			sb.WriteString(fmt.Sprintf("%s %s\n", cursor, opt))
+		}
+		return sb.String()
+	case StateRepoSelect:
+		return m.repoModel.View()
+	case StateScanning:
+		var sb strings.Builder
+		sb.WriteString(styleInfoText.Render("正在扫描仓库...\n\n"))
+		for _, log := range m.scanLogs {
+			sb.WriteString(log + "\n")
+		}
+		return sb.String()
+	case StateBranchSelect:
+		return m.branchModel.View()
+	case StateFutureTODO:
+		return styleWarnText.Render("TODO: 合并/评审功能开发中...\n\n按 ESC 返回主菜单")
+	default:
+		return ""
+	}
+}
+
+func (m MainModel) renderHelp() string {
+	switch m.state {
+	case StateMenu:
+		return "↑/↓: 移动  ENTER: 确认  Q: 退出"
+	case StateRepoSelect:
+		return "↑/↓: 移动  SPACE: 选择  A: 全选  D: 确认  Q: 退出  ESC: 返回"
+	case StateScanning:
+		return "正在处理，请稍候...  Q: 强制退出"
+	case StateBranchSelect:
+		return "↑/↓: 移动  SPACE: 选择  A: 全选  D: 确认删除  Q: 退出"
+	default:
+		return "Q: 退出"
+	}
+}
+
+func StartMainTUI(cfg *Config, opts TUIOptions) (Result, error) {
+	m := NewMainModel(cfg, opts)
+	p := tea.NewProgram(m, tea.WithAltScreen())
+
+	finalModel, err := p.Run()
+	if err != nil {
+		return Result{}, err
+	}
+
+	fm := finalModel.(MainModel)
+	return fm.branchModel.result, nil
+}
+
+// 兼容旧的 View 方法
+func (m BranchModel) View() string {
+	var s strings.Builder
 
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
@@ -319,6 +551,11 @@ func (m Model) View() string {
 		MarginBottom(1)
 	s.WriteString(titleStyle.Render("=== 可删除的分支（已合并到 master）==="))
 	s.WriteString("\n\n")
+
+	if len(m.candidates) == 0 {
+		s.WriteString(styleMutedText.Render("未找到符合条件的分支。"))
+		return s.String()
+	}
 
 	for i, candidate := range m.candidates {
 		cursor := " "
@@ -348,16 +585,6 @@ func (m Model) View() string {
 
 	switch m.mode {
 	case ModeNormal:
-		helpStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color(colorMuted)).
-			MarginTop(1)
-		s.WriteString(helpStyle.Render("操作说明:"))
-		s.WriteString("\n")
-		s.WriteString(helpStyle.Render("  ↑/K: 上移  ↓/J: 下移  SPACE: 选择/取消"))
-		s.WriteString("\n")
-		s.WriteString(helpStyle.Render("  A: 全选/反选  D: 确认删除  O: 打开配置目录  Q: 退出"))
-		s.WriteString("\n")
-
 		selectedCount := 0
 		for _, selected := range m.selected {
 			if selected {
@@ -368,7 +595,7 @@ func (m Model) View() string {
 			countStyle := lipgloss.NewStyle().
 				Foreground(lipgloss.Color(colorAccent)).
 				Bold(true)
-			s.WriteString(countStyle.Render(fmt.Sprintf("\n已选择 %d 个分支", selectedCount)))
+			s.WriteString(countStyle.Render(fmt.Sprintf("已选择 %d 个分支", selectedCount)))
 			s.WriteString("\n")
 		}
 
@@ -384,11 +611,8 @@ func (m Model) View() string {
 	case ModeConfirm:
 		confirmStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color(colorWarn)).
-			Bold(true).
-			MarginTop(1)
-		s.WriteString(confirmStyle.Render("确认删除选中的分支？"))
-		s.WriteString("\n")
-		s.WriteString(confirmStyle.Render("按 D 执行删除，按 ESC 取消"))
+			Bold(true)
+		s.WriteString(confirmStyle.Render("确认删除选中的分支？ (按 D 执行，按 ESC 取消)"))
 		s.WriteString("\n")
 
 	case ModeDeleting:
@@ -405,16 +629,4 @@ func (m Model) View() string {
 	}
 
 	return s.String()
-}
-
-func StartTUI(candidates []Candidate, opts TUIOptions) (Result, error) {
-	p := tea.NewProgram(NewModel(candidates, opts))
-
-	finalModel, err := p.Run()
-	if err != nil {
-		return Result{}, fmt.Errorf("运行 TUI 失败: %w", err)
-	}
-
-	m := finalModel.(Model)
-	return m.result, nil
 }
