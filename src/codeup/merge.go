@@ -65,6 +65,7 @@ type MergeDoneMsg struct {
 type MergeResultMsg struct {
 	CR         *ChangeRequest
 	Repository *Repository
+	Existing   bool
 }
 
 type MergeModel struct {
@@ -78,6 +79,7 @@ type MergeModel struct {
 	opts         TUIOptions
 	msgChan      chan tea.Msg
 	done         bool
+	existing     bool
 }
 
 func NewMergeModel(repo RepoConfig, opts TUIOptions) MergeModel {
@@ -119,6 +121,17 @@ func (m MergeModel) startCreateChangeRequest() tea.Msg {
 	}
 	if repository == nil {
 		return MergeDoneMsg{Success: false, Error: fmt.Errorf("未找到仓库: %s", repoID)}
+	}
+
+	crs, err := m.opts.Client.ListChangeRequests(ctx)
+	if err == nil {
+		for _, cr := range crs {
+			if cr.ProjectId == repository.ID &&
+				cr.SourceBranch == m.sourceBranch &&
+				cr.TargetBranch == m.targetBranch {
+				return MergeResultMsg{CR: &cr, Repository: repository, Existing: true}
+			}
+		}
 	}
 
 	repoIdentity := repositoryIdentity(repository)
@@ -168,6 +181,7 @@ func (m MergeModel) Update(msg tea.Msg) (MergeModel, tea.Cmd) {
 	case MergeResultMsg:
 		m.cr = msg.CR
 		m.repository = msg.Repository
+		m.existing = msg.Existing
 		m.status = m.evaluateStatus(msg.CR)
 		return m, nil
 
@@ -185,19 +199,24 @@ func (m MergeModel) Update(msg tea.Msg) (MergeModel, tea.Cmd) {
 }
 
 func (m MergeModel) evaluateStatus(cr *ChangeRequest) MergeStatus {
-	if cr.Status == "CLOSED" {
+	state := cr.Status
+	if state == "" {
+		state = cr.State
+	}
+
+	if state == "CLOSED" {
 		return MergeStatusClosed
 	}
 
-	if cr.Status == "MERGED" {
+	if state == "MERGED" {
 		return MergeStatusAlreadyMerged
 	}
 
-	if cr.Ahead == 0 {
+	if !m.existing && cr.Ahead == 0 {
 		return MergeStatusNoChanges
 	}
 
-	if cr.ConflictCheckStatus == "HAS_CONFLICT" {
+	if cr.HasConflict || cr.ConflictCheckStatus == "HAS_CONFLICT" {
 		return MergeStatusHasConflict
 	}
 
@@ -205,11 +224,11 @@ func (m MergeModel) evaluateStatus(cr *ChangeRequest) MergeStatus {
 		return MergeStatusChecking
 	}
 
-	if cr.Status == "TO_BE_MERGED" && cr.AllRequirementsPass {
+	if state == "TO_BE_MERGED" && cr.AllRequirementsPass {
 		return MergeStatusCanMerge
 	}
 
-	if cr.Status == "UNDER_REVIEW" || !cr.AllRequirementsPass {
+	if state == "UNDER_REVIEW" || !cr.AllRequirementsPass {
 		return MergeStatusNeedReview
 	}
 

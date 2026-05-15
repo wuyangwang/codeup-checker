@@ -76,8 +76,11 @@ type ChangeRequest struct {
 	TargetBranch        string `json:"targetBranch"`
 	SourceProjectID     int64  `json:"sourceProjectId"`
 	TargetProjectID     int64  `json:"targetProjectId"`
+	ProjectId           int64  `json:"projectId"`
 	Status              string `json:"status"`
+	State               string `json:"state"`
 	ConflictCheckStatus string `json:"conflictCheckStatus"`
+	HasConflict         bool   `json:"hasConflict"`
 	Ahead               int    `json:"ahead"`
 	Behind              int    `json:"behind"`
 	AllRequirementsPass bool   `json:"allRequirementsPass"`

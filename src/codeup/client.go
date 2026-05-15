@@ -116,6 +116,15 @@ func (c *CodeupClient) GetCompareDetail(ctx context.Context, repositoryIdentity,
 	return &result, nil
 }
 
+func (c *CodeupClient) ListChangeRequests(ctx context.Context) ([]ChangeRequest, error) {
+	var result []ChangeRequest
+	path := c.orgPath("changeRequests")
+	if err := c.doJSON(ctx, http.MethodGet, path, nil, &result); err != nil {
+		return nil, fmt.Errorf("list change requests: %w", err)
+	}
+	return result, nil
+}
+
 func (c *CodeupClient) DeleteBranch(ctx context.Context, repositoryIdentity, branchName string) error {
 	path := c.repoPath(repositoryIdentity, "branches", branchName)
 	return c.doJSON(ctx, http.MethodDelete, path, nil, nil)
