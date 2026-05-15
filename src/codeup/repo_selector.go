@@ -16,6 +16,8 @@ type RepoSelectorModel struct {
 	quitting    bool
 	allSelected bool
 	confirmed   bool
+	singleMode  bool
+	title       string
 }
 
 var repoTitleStyle = lipgloss.NewStyle().
@@ -32,6 +34,16 @@ func NewRepoSelectorModel(repos []RepoConfig) RepoSelectorModel {
 		repos:       repos,
 		selected:    make(map[int]bool),
 		allSelected: false,
+		title:       "=== 请选择要扫描的仓库 ===",
+	}
+}
+
+func NewSingleRepoSelectorModel(repos []RepoConfig, title string) RepoSelectorModel {
+	return RepoSelectorModel{
+		repos:      repos,
+		selected:   make(map[int]bool),
+		singleMode: true,
+		title:      title,
 	}
 }
 
@@ -58,7 +70,12 @@ func (m RepoSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case key.Matches(msg, keys.Space):
-			m.selected[m.cursor] = !m.selected[m.cursor]
+			if m.singleMode {
+				m.selected = make(map[int]bool)
+				m.selected[m.cursor] = true
+			} else {
+				m.selected[m.cursor] = !m.selected[m.cursor]
+			}
 
 		case key.Matches(msg, keys.Select):
 			if m.allSelected {
@@ -109,7 +126,7 @@ func (m RepoSelectorModel) View() string {
 
 	var s strings.Builder
 
-	s.WriteString(repoTitleStyle.Render("=== 请选择要扫描的仓库 ==="))
+	s.WriteString(repoTitleStyle.Render(m.title))
 	s.WriteString("\n\n")
 
 	for i, repo := range m.repos {

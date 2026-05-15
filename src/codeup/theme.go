@@ -13,6 +13,7 @@ const (
 	colorAccent  = "81"
 	colorSuccess = "10"
 	colorWarn    = "214"
+	colorError   = "196"
 )
 
 var (

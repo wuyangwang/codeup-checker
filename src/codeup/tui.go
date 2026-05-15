@@ -20,6 +20,8 @@ const (
 	StateRepoSelect
 	StateScanning
 	StateBranchSelect
+	StateMergeSelect
+	StateMerge
 	StateFutureTODO
 )
 
@@ -317,6 +319,7 @@ type MainModel struct {
 	state       AppState
 	repoModel   RepoSelectorModel
 	branchModel BranchModel
+	mergeModel  MergeModel
 	scanLogs    []string
 	opts        TUIOptions
 	config      *Config
@@ -324,6 +327,7 @@ type MainModel struct {
 	quitting    bool
 	msgChan     chan tea.Msg
 	menuCursor  int
+	mergeMode   bool
 }
 
 func NewMainModel(cfg *Config, opts TUIOptions) MainModel {
@@ -364,9 +368,13 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case key.Matches(msg, keys.Enter):
 				if m.menuCursor == 0 {
+					m.mergeMode = false
+					m.repoModel = NewRepoSelectorModel(m.config.Repositories)
 					m.state = StateRepoSelect
 				} else {
-					m.state = StateFutureTODO
+					m.mergeMode = true
+					m.repoModel = NewSingleRepoSelectorModel(m.config.Repositories, "=== 请选择要合并的仓库 ===")
+					m.state = StateRepoSelect
 				}
 			case key.Matches(msg, keys.Esc):
 				m.quitting = true
@@ -411,8 +419,15 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.repoModel = newRepoModel.(RepoSelectorModel)
 		if m.repoModel.confirmed {
 			selected := m.repoModel.GetSelected()
-			m.state = StateScanning
-			return m, m.startScanning(selected)
+			if len(selected) > 0 {
+				if m.mergeMode {
+					m.mergeModel = NewMergeModel(selected[0], m.opts)
+					m.state = StateMerge
+					return m, m.mergeModel.Init()
+				}
+				m.state = StateScanning
+				return m, m.startScanning(selected)
+			}
 		}
 		if m.repoModel.quitting {
 			m.state = StateMenu
@@ -425,6 +440,13 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.branchModel.back {
 			m.state = StateMenu
 			m.branchModel.back = false
+			return m, nil
+		}
+
+	case StateMerge:
+		m.mergeModel, cmd = m.mergeModel.Update(msg)
+		if m.mergeModel.done {
+			m.state = StateMenu
 			return m, nil
 		}
 	}
@@ -523,7 +545,7 @@ func (m MainModel) renderContent() string {
 		var sb strings.Builder
 		sb.WriteString(styleTitleText.Render("=== 主菜单 ==="))
 		sb.WriteString("\n\n")
-		options := []string{"分支清理 (清理已合并的分支)", "代码合并 (TODO: 合并 Prod 到 Master)"}
+		options := []string{"分支清理 (清理已合并的分支)", "代码合并 (合并 Production 到 Master)"}
 		for i, opt := range options {
 			cursor := "  "
 			if m.menuCursor == i {
@@ -556,6 +578,8 @@ func (m MainModel) renderContent() string {
 		return sb.String()
 	case StateBranchSelect:
 		return m.branchModel.View()
+	case StateMerge:
+		return m.mergeModel.View()
 	case StateFutureTODO:
 		return styleWarnText.Render("TODO: 合并/评审功能开发中...\n\n按 ESC 返回主菜单")
 	default:
@@ -591,6 +615,8 @@ func (m MainModel) renderHelp() string {
 			return "D: 确认执行删除  ESC: 取消并返回  Q: 退出"
 		}
 		return "↑/↓: 移动  SPACE: 选中分支  A: 全选/反选  D: 执行删除  ESC: 返回菜单  Q: 退出"
+	case StateMerge:
+		return "M: 合并/评审  ESC: 返回菜单  Q: 退出"
 	default:
 		return "Q: 退出"
 	}

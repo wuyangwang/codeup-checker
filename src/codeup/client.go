@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -34,7 +35,8 @@ type Branch struct {
 	Name      string `json:"name"`
 	Protected any    `json:"protected"`
 	Commit    *struct {
-		ID string `json:"id"`
+		ID      string `json:"id"`
+		ShortID string `json:"short_id"`
 	} `json:"commit"`
 }
 
@@ -183,4 +185,75 @@ func joinEscapedPath(parts ...string) string {
 		escaped = append(escaped, url.PathEscape(part))
 	}
 	return "/" + strings.Join(escaped, "/")
+}
+
+func (c *CodeupClient) doJSONWithBody(ctx context.Context, method, path string, body any, out any) error {
+	c.requestCnt.Add(1)
+
+	reqURL, err := url.Parse(c.baseURL)
+	if err != nil {
+		return err
+	}
+	reqURL.Path = path
+
+	var bodyReader *strings.Reader
+	if body != nil {
+		bodyBytes, err := json.Marshal(body)
+		if err != nil {
+			return fmt.Errorf("marshal request body: %w", err)
+		}
+		bodyReader = strings.NewReader(string(bodyBytes))
+	} else {
+		bodyReader = strings.NewReader("")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, method, reqURL.String(), bodyReader)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("x-yunxiao-token", c.token)
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read response body: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	if out == nil {
+		return nil
+	}
+	return json.Unmarshal(respBody, out)
+}
+
+func (c *CodeupClient) CreateChangeRequest(ctx context.Context, repoIdentity string, req CreateChangeRequestReq) (*ChangeRequest, error) {
+	path := c.repoPath(repoIdentity, "changeRequests")
+	var result ChangeRequest
+	if err := c.doJSONWithBody(ctx, http.MethodPost, path, req, &result); err != nil {
+		return nil, fmt.Errorf("create change request: %w", err)
+	}
+	return &result, nil
+}
+
+func (c *CodeupClient) ReviewChangeRequest(ctx context.Context, repoIdentity string, localID int, req ReviewChangeRequestReq) error {
+	path := c.repoPath(repoIdentity, "changeRequests", fmt.Sprintf("%d", localID), "review")
+	return c.doJSONWithBody(ctx, http.MethodPost, path, req, nil)
+}
+
+func (c *CodeupClient) MergeChangeRequest(ctx context.Context, repoIdentity string, localID int, req MergeChangeRequestReq) (*ChangeRequest, error) {
+	path := c.repoPath(repoIdentity, "changeRequests", fmt.Sprintf("%d", localID), "merge")
+	var result ChangeRequest
+	if err := c.doJSONWithBody(ctx, http.MethodPost, path, req, &result); err != nil {
+		return nil, fmt.Errorf("merge change request: %w", err)
+	}
+	return &result, nil
 }

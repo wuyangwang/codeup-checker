@@ -67,3 +67,65 @@ type FailedDeletion struct {
 	Candidate Candidate
 	Error     error
 }
+
+// ChangeRequest 表示合并请求
+type ChangeRequest struct {
+	LocalID             int    `json:"localId"`
+	Title               string `json:"title"`
+	SourceBranch        string `json:"sourceBranch"`
+	TargetBranch        string `json:"targetBranch"`
+	SourceProjectID     int64  `json:"sourceProjectId"`
+	TargetProjectID     int64  `json:"targetProjectId"`
+	Status              string `json:"status"`
+	ConflictCheckStatus string `json:"conflictCheckStatus"`
+	Ahead               int    `json:"ahead"`
+	Behind              int    `json:"behind"`
+	AllRequirementsPass bool   `json:"allRequirementsPass"`
+	DetailURL           string `json:"detailUrl"`
+	WebURL              string `json:"webUrl"`
+}
+
+// MergeStatus 合并状态枚举
+type MergeStatus int
+
+const (
+	MergeStatusIdle MergeStatus = iota
+	MergeStatusCreating
+	MergeStatusChecking
+	MergeStatusCanMerge
+	MergeStatusNeedReview
+	MergeStatusUnderReview
+	MergeStatusHasConflict
+	MergeStatusNoChanges
+	MergeStatusMerging
+	MergeStatusDone
+	MergeStatusClosed
+	MergeStatusAlreadyMerged
+	MergeStatusError
+)
+
+// CreateChangeRequestReq 创建合并请求参数
+type CreateChangeRequestReq struct {
+	Title           string `json:"title"`
+	Description     string `json:"description,omitempty"`
+	SourceBranch    string `json:"sourceBranch"`
+	TargetBranch    string `json:"targetBranch"`
+	SourceProjectID int64  `json:"sourceProjectId"`
+	TargetProjectID int64  `json:"targetProjectId"`
+	SourceCommit    string `json:"sourceCommit,omitempty"`
+	SourceCommitID  string `json:"sourceCommitId,omitempty"`
+	CreateFrom      string `json:"createFrom,omitempty"`
+}
+
+// ReviewChangeRequestReq 评审合并请求参数
+type ReviewChangeRequestReq struct {
+	ReviewOpinion string `json:"reviewOpinion"`
+	ReviewComment string `json:"reviewComment,omitempty"`
+}
+
+// MergeChangeRequestReq 合并合并请求参数
+type MergeChangeRequestReq struct {
+	MergeType          string `json:"mergeType"`
+	MergeMessage       string `json:"mergeMessage,omitempty"`
+	RemoveSourceBranch bool   `json:"removeSourceBranch"`
+}
