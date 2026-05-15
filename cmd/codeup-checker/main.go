@@ -127,5 +127,5 @@ func main() {
 		return
 	}
 
-	codeup.DisplaySummary(result, os.Getenv("DRY_RUN") == "true")
+	codeup.DisplaySummary(result)
 }

@@ -175,12 +175,15 @@ func listMergedBranches(ctx context.Context, client *CodeupClient, repo RepoConf
 
 		for result := range resultCh {
 			if result.err != nil {
-				printLine("    %s\n", renderScanError(result.name, result.err))
+				printLine("%s\n", renderScanError(result.name, result.err))
 				continue
 			}
 			if result.merged {
+				if len(mergedBranches) == 0 {
+					printLine("\n")
+				}
 				mergedBranches = append(mergedBranches, result.name)
-				printLine("    %s\n", renderMergedBranch(result.name))
+				printLine("%s\n", renderMergedBranch(result.name))
 			}
 		}
 

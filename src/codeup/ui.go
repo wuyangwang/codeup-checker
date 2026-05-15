@@ -8,18 +8,9 @@ import (
 	"runtime"
 )
 
-func DisplaySummary(result Result, dryRun bool) {
-	fmt.Println("\n=== 汇总 ===")
-	if dryRun {
-		fmt.Printf("[DryRun] 将删除 %d 个分支\n", len(result.Success))
-		return
-	}
-
-	fmt.Printf("成功删除: %d\n", len(result.Success))
-	fmt.Printf("删除失败: %d\n", len(result.Failed))
-
+func DisplaySummary(result Result) {
 	if len(result.Failed) > 0 {
-		fmt.Println("\n删除失败的分支:")
+		fmt.Println("\n=== 删除失败汇总 ===")
 		for _, failure := range result.Failed {
 			fmt.Printf("  - %s/%s: %v\n", failure.Candidate.RepoName, failure.Candidate.BranchName, failure.Error)
 		}
