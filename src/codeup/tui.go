@@ -471,11 +471,18 @@ func (m MainModel) View() string {
 	s.WriteString("\n")
 
 	// Body
-	s.WriteString(contentStyle.Render(m.renderContent()))
+	content := m.renderContent()
+	// 在菜单和仓库选择状态下，将帮助信息直接附在内容后，不使用边框页脚
+	if m.state <= StateRepoSelect {
+		content += "\n" + m.renderFooter()
+	}
+	s.WriteString(contentStyle.Render(content))
 	s.WriteString("\n")
 
-	// Footer
-	s.WriteString(footerStyle.Render(m.renderFooter()))
+	// Footer (仅在扫描及后续阶段显示带边框的页脚)
+	if m.state > StateRepoSelect {
+		s.WriteString(footerStyle.Render(m.renderFooter()))
+	}
 
 	return s.String()
 }
@@ -496,7 +503,14 @@ func (m MainModel) renderContent() string {
 		}
 		return sb.String()
 	case StateRepoSelect:
-		return m.repoModel.View()
+		var sb strings.Builder
+		sb.WriteString(m.repoModel.View())
+
+		selected := m.repoModel.GetSelected()
+		if len(selected) > 0 {
+			sb.WriteString(styleAccentText.Render(fmt.Sprintf("\n已选择 %d 个仓库", len(selected))) + "\n")
+		}
+		return sb.String()
 	case StateScanning:
 		var sb strings.Builder
 		sb.WriteString(styleInfoText.Render("正在扫描仓库...\n\n"))

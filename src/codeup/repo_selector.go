@@ -127,32 +127,6 @@ func (m RepoSelectorModel) View() string {
 		s.WriteString("\n")
 	}
 
-	s.WriteString("\n")
-
-	helpStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color(colorMuted)).
-		MarginTop(1)
-	s.WriteString(helpStyle.Render("操作说明:"))
-	s.WriteString("\n")
-	s.WriteString(helpStyle.Render("  ↑/K: 上移  ↓/J: 下移  SPACE: 选择/取消"))
-	s.WriteString("\n")
-	s.WriteString(helpStyle.Render("  A: 全选/反选  D: 确认选择  Q: 退出"))
-	s.WriteString("\n")
-
-	selectedCount := 0
-	for _, selected := range m.selected {
-		if selected {
-			selectedCount++
-		}
-	}
-	if selectedCount > 0 {
-		countStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color(colorAccent)).
-			Bold(true)
-		s.WriteString(countStyle.Render(fmt.Sprintf("\n已选择 %d 个仓库", selectedCount)))
-		s.WriteString("\n")
-	}
-
 	return s.String()
 }
 
