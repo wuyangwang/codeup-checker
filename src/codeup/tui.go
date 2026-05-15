@@ -113,6 +113,7 @@ type BranchModel struct {
 	mode        Mode
 	result      Result
 	quitting    bool
+	back        bool
 	allSelected bool
 	opts        TUIOptions
 	deleting    int
@@ -187,6 +188,8 @@ func (m BranchModel) Update(msg tea.Msg) (BranchModel, tea.Cmd) {
 		case key.Matches(msg, keys.Esc):
 			if m.mode == ModeConfirm {
 				m.mode = ModeNormal
+			} else if m.mode == ModeNormal {
+				m.back = true
 			}
 		}
 
@@ -417,6 +420,11 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case StateBranchSelect:
 		m.branchModel, cmd = m.branchModel.Update(msg)
+		if m.branchModel.back {
+			m.state = StateMenu
+			m.branchModel.back = false
+			return m, nil
+		}
 	}
 
 	return m, cmd
@@ -475,7 +483,7 @@ func (m MainModel) View() string {
 	if m.state > StateRepoSelect {
 		s.WriteString(footerStyle.Render(m.renderFooter()))
 	} else if m.state == StateRepoSelect {
-		// 在仓库选择阶段，不显示边框页脚，但显示基础操作说明（回应用户反馈：操作项和操作按钮不见了）
+		// 在仓库选择阶段，不显示边框页脚，但显示基础操作说明
 		s.WriteString("\n" + m.renderFooter())
 	}
 
@@ -546,11 +554,14 @@ func (m MainModel) renderHelp() string {
 	case StateMenu:
 		return "↑/↓: 移动  ENTER: 确认  Q: 退出"
 	case StateRepoSelect:
-		return "↑/↓: 移动  SPACE: 选择  A: 全选  D: 确认  Q: 退出  ESC: 返回"
+		return "↑/↓: 移动  SPACE: 选择仓库  A: 全选/反选  D: 开始扫描  ESC: 返回菜单  Q: 退出"
 	case StateScanning:
 		return "正在处理，请稍候...  Q: 强制退出"
 	case StateBranchSelect:
-		return "↑/↓: 移动  SPACE: 选择  A: 全选  D: 确认删除  Q: 退出"
+		if m.branchModel.mode == ModeConfirm {
+			return "D: 确认执行删除  ESC: 取消并返回  Q: 退出"
+		}
+		return "↑/↓: 移动  SPACE: 选中分支  A: 全选/反选  D: 执行删除  ESC: 返回菜单  Q: 退出"
 	default:
 		return "Q: 退出"
 	}
@@ -640,7 +651,7 @@ func (m BranchModel) View() string {
 		confirmStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color(colorWarn)).
 			Bold(true)
-		s.WriteString(confirmStyle.Render("确认删除选中的分支？ (按 D 执行，按 ESC 取消)"))
+		s.WriteString(confirmStyle.Render("确认删除选中的分支？"))
 		s.WriteString("\n")
 
 	case ModeDeleting:
