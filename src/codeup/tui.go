@@ -453,9 +453,6 @@ var (
 			Border(lipgloss.NormalBorder(), true, false, false, false).
 			BorderForeground(lipgloss.Color(colorMuted)).
 			MarginTop(1)
-
-	contentStyle = lipgloss.NewStyle().
-			Padding(0, 0)
 )
 
 func (m MainModel) View() string {
@@ -471,13 +468,15 @@ func (m MainModel) View() string {
 	s.WriteString("\n")
 
 	// Body
-	content := m.renderContent()
-	s.WriteString(contentStyle.Render(content))
+	s.WriteString(m.renderContent())
 	s.WriteString("\n")
 
-	// Footer (仅在扫描及后续阶段显示)
+	// Footer (仅在扫描及后续阶段显示带边框的页脚)
 	if m.state > StateRepoSelect {
 		s.WriteString(footerStyle.Render(m.renderFooter()))
+	} else if m.state == StateRepoSelect {
+		// 在仓库选择阶段，不显示边框页脚，但显示基础操作说明（回应用户反馈：操作项和操作按钮不见了）
+		s.WriteString("\n" + m.renderFooter())
 	}
 
 	return s.String()
@@ -491,17 +490,15 @@ func (m MainModel) renderContent() string {
 		sb.WriteString("\n\n")
 		options := []string{"分支清理 (清理已合并的分支)", "代码合并 (TODO: 合并 Prod 到 Master)"}
 		for i, opt := range options {
-			num := fmt.Sprintf("%d. ", i+1)
 			cursor := "  "
 			if m.menuCursor == i {
 				cursor = "> "
 			}
-			line := num + cursor + opt
+			line := fmt.Sprintf("%s%d. %s", cursor, i+1, opt)
 			if m.menuCursor == i {
-				sb.WriteString(styleAccentText.Render(line) + "\n")
-			} else {
-				sb.WriteString(line + "\n")
+				line = styleAccentText.Render(line)
 			}
+			sb.WriteString(line + "\n")
 		}
 		return sb.String()
 	case StateRepoSelect:
@@ -536,8 +533,10 @@ func (m MainModel) renderFooter() string {
 	sb.WriteString(m.renderHelp())
 
 	// 处理时显示 HTTP 请求数
-	sb.WriteString("\n")
-	sb.WriteString(styleMutedText.Render(fmt.Sprintf("HTTP 请求: %d", m.opts.Client.RequestCount())))
+	if m.state > StateRepoSelect {
+		sb.WriteString("\n")
+		sb.WriteString(styleMutedText.Render(fmt.Sprintf("HTTP 请求: %d", m.opts.Client.RequestCount())))
+	}
 
 	return sb.String()
 }
