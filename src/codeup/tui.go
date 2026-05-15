@@ -383,7 +383,9 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case ScanProgressMsg:
-		m.scanLogs = append(m.scanLogs, msg.Message)
+		// 去除任何潜在的末尾空白，确保左对齐
+		cleanMsg := strings.TrimRight(msg.Message, " \n\r\t")
+		m.scanLogs = append(m.scanLogs, cleanMsg)
 		if len(m.scanLogs) > 15 {
 			m.scanLogs = m.scanLogs[len(m.scanLogs)-15:]
 		}
@@ -520,7 +522,9 @@ func (m MainModel) renderContent() string {
 		return sb.String()
 	case StateScanning:
 		var sb strings.Builder
-		sb.WriteString(styleInfoText.Render("正在扫描仓库...\n\n"))
+		// 将换行符移出样式 Render，确保对齐不受样式内换行影响
+		sb.WriteString(styleInfoText.Render("正在扫描仓库..."))
+		sb.WriteString("\n\n")
 		for _, log := range m.scanLogs {
 			sb.WriteString(log + "\n")
 		}

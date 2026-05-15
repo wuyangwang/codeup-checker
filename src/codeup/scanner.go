@@ -39,6 +39,7 @@ func ScanRepositoriesAsync(ctx context.Context, client *CodeupClient, cfg *Confi
 
 			// We need a local printLine that sends messages
 			localPrintLine := func(format string, a ...any) {
+				// 移除格式化字符串末尾的换行符，由 TUI 统一处理显示
 				msgChan <- ScanProgressMsg{Message: fmt.Sprintf(format, a...)}
 			}
 
@@ -165,15 +166,17 @@ func listMergedBranches(ctx context.Context, client *CodeupClient, repo RepoConf
 
 		for result := range resultCh {
 			if result.err != nil {
-				printLine("%s\n", renderScanError(result.name, result.err))
+				// 移除末尾换行符
+				printLine("%s", renderScanError(result.name, result.err))
 				continue
 			}
 			if result.merged {
 				if len(mergedBranches) == 0 {
-					printLine("\n")
+					printLine("")
 				}
 				mergedBranches = append(mergedBranches, result.name)
-				printLine("%s\n", renderMergedBranch(result.name))
+				// 移除末尾换行符
+				printLine("%s", renderMergedBranch(result.name))
 			}
 		}
 
