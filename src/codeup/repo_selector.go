@@ -120,16 +120,33 @@ func (m RepoSelectorModel) GetSelected() []RepoConfig {
 }
 
 func (m RepoSelectorModel) View() string {
+	return m.ViewWithSize(defaultTUIWidth, defaultTUIHeight)
+}
+
+func (m RepoSelectorModel) ViewWithSize(width, height int) string {
 	if m.quitting {
 		return ""
 	}
 
+	width = effectiveWidth(width)
+	listHeight := height - 3
+	if listHeight < 1 {
+		listHeight = 1
+	}
+	start, end := visibleRange(len(m.repos), m.cursor, listHeight)
+
 	var s strings.Builder
 
-	s.WriteString(repoTitleStyle.Render(m.title))
+	s.WriteString(repoTitleStyle.Render(truncateText(m.title, width)))
 	s.WriteString("\n\n")
 
-	for i, repo := range m.repos {
+	if start > 0 {
+		s.WriteString(styleMutedText.Render(truncateText(fmt.Sprintf("↑ 还有 %d 个仓库", start), width)))
+		s.WriteString("\n")
+	}
+
+	for i := start; i < end; i++ {
+		repo := m.repos[i]
 		cursor := "  "
 		if m.cursor == i {
 			cursor = "> "
@@ -140,13 +157,19 @@ func (m RepoSelectorModel) View() string {
 			checked = "✓"
 		}
 
-		line := fmt.Sprintf("%s[%s] %s", cursor, checked, repo.DisplayName())
+		prefix := fmt.Sprintf("%s[%s] ", cursor, checked)
+		line := prefix + truncateText(repo.DisplayName(), width-plainLen(prefix))
 
 		if m.cursor == i {
 			line = repoLineStyle.Render(line)
 		}
 
 		s.WriteString(line)
+		s.WriteString("\n")
+	}
+
+	if end < len(m.repos) {
+		s.WriteString(styleMutedText.Render(truncateText(fmt.Sprintf("↓ 还有 %d 个仓库", len(m.repos)-end), width)))
 		s.WriteString("\n")
 	}
 

@@ -317,6 +317,8 @@ func runDeletionAsync(opts TUIOptions, toDelete []Candidate, msgChan chan tea.Ms
 // MainModel 统一状态机模型
 type MainModel struct {
 	state       AppState
+	width       int
+	height      int
 	repoModel   RepoSelectorModel
 	branchModel BranchModel
 	mergeModel  MergeModel
@@ -347,6 +349,11 @@ func (m MainModel) Init() tea.Cmd {
 
 func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
+
 	case tea.KeyMsg:
 		if key.Matches(msg, keys.Quit) {
 			m.quitting = true
@@ -517,102 +524,158 @@ func (m MainModel) View() string {
 		return "正在退出...\n"
 	}
 
+	layout := m.layout()
 	var s strings.Builder
 
-	// Header
-	header := "Codeup 分支清理工具"
-	s.WriteString(headerStyle.Render(header))
+	header := truncateText("Codeup 分支清理工具", layout.width)
+	s.WriteString(headerStyle.Width(layout.width).Render(header))
 	s.WriteString("\n")
 
-	// Body
 	s.WriteString(m.renderContent())
 	s.WriteString("\n")
 
-	// Footer (仅在扫描及后续阶段显示带边框的页脚)
 	if m.state > StateRepoSelect {
-		s.WriteString(footerStyle.Render(m.renderFooter()))
+		s.WriteString(footerStyle.Width(layout.width).Render(m.renderFooter()))
 	} else if m.state == StateRepoSelect {
-		// 在仓库选择阶段，不显示边框页脚，但显示基础操作说明
 		s.WriteString("\n" + m.renderFooter())
 	}
 
 	return s.String()
 }
 
+type mainLayout struct {
+	width      int
+	bodyWidth  int
+	bodyHeight int
+}
+
+func (m MainModel) layout() mainLayout {
+	width := effectiveWidth(m.width)
+	height := effectiveHeight(m.height)
+
+	bodyHeight := height - 3
+	if m.state >= StateRepoSelect {
+		bodyHeight -= 2
+	}
+	if bodyHeight < 1 {
+		bodyHeight = 1
+	}
+
+	return mainLayout{width: width, bodyWidth: width, bodyHeight: bodyHeight}
+}
+
 func (m MainModel) renderContent() string {
+	layout := m.layout()
+	return m.renderContentWithSize(layout.bodyWidth, layout.bodyHeight)
+}
+
+func (m MainModel) renderContentWithSize(width, height int) string {
 	switch m.state {
 	case StateMenu:
-		var sb strings.Builder
-		sb.WriteString(styleTitleText.Render("=== 主菜单 ==="))
-		sb.WriteString("\n\n")
-		options := []string{"分支清理 (清理已合并的分支)", "代码合并 (合并 Production 到 Master)"}
-		for i, opt := range options {
-			cursor := "  "
-			if m.menuCursor == i {
-				cursor = "> "
-			}
-			line := fmt.Sprintf("%s%d. %s", cursor, i+1, opt)
-			if m.menuCursor == i {
-				line = styleAccentText.Render(line)
-			}
-			sb.WriteString(line + "\n")
-		}
-		return sb.String()
+		return m.renderMenu(width)
 	case StateRepoSelect:
-		var sb strings.Builder
-		sb.WriteString(m.repoModel.View())
-
-		selected := m.repoModel.GetSelected()
-		if len(selected) > 0 {
-			sb.WriteString(styleAccentText.Render(fmt.Sprintf("\n已选择 %d 个仓库", len(selected))) + "\n")
-		}
-		return sb.String()
+		return m.renderRepoSelect(width, height)
 	case StateScanning:
-		var sb strings.Builder
-		// 将换行符移出样式 Render，确保对齐不受样式内换行影响
-		sb.WriteString(styleInfoText.Render("正在扫描仓库..."))
-		sb.WriteString("\n\n")
-		for _, log := range m.scanLogs {
-			sb.WriteString(log + "\n")
-		}
-		return sb.String()
+		return m.renderScanning(width, height)
 	case StateBranchSelect:
-		return m.branchModel.View()
+		return m.branchModel.ViewWithSize(width, height)
 	case StateMerge:
-		return m.mergeModel.View()
+		return m.mergeModel.ViewWithSize(width)
 	case StateFutureTODO:
-		return styleWarnText.Render("TODO: 合并/评审功能开发中...\n\n按 ESC 返回主菜单")
+		return styleWarnText.Render(truncateText("TODO: 合并/评审功能开发中...", width) + "\n\n" + truncateText("按 ESC 返回主菜单", width))
 	default:
 		return ""
 	}
 }
 
+func (m MainModel) renderMenu(width int) string {
+	var sb strings.Builder
+	sb.WriteString(styleTitleText.Render(truncateText("=== 主菜单 ===", width)))
+	sb.WriteString("\n\n")
+	options := []string{"分支清理 (清理已合并的分支)", "代码合并 (合并 Production 到 Master)"}
+	for i, opt := range options {
+		cursor := "  "
+		if m.menuCursor == i {
+			cursor = "> "
+		}
+		line := truncateText(fmt.Sprintf("%s%d. %s", cursor, i+1, opt), width)
+		if m.menuCursor == i {
+			line = styleAccentText.Render(line)
+		}
+		sb.WriteString(line + "\n")
+	}
+	return sb.String()
+}
+
+func (m MainModel) renderRepoSelect(width, height int) string {
+	var sb strings.Builder
+	sb.WriteString(m.repoModel.ViewWithSize(width, height-2))
+
+	selected := m.repoModel.GetSelected()
+	if len(selected) > 0 {
+		sb.WriteString(styleAccentText.Render(truncateText(fmt.Sprintf("\n已选择 %d 个仓库", len(selected)), width)) + "\n")
+	}
+	return sb.String()
+}
+
+func (m MainModel) renderScanning(width, height int) string {
+	var sb strings.Builder
+	sb.WriteString(styleInfoText.Render(truncateText("正在扫描仓库...", width)))
+	sb.WriteString("\n\n")
+
+	visibleLogs := height - 2
+	if visibleLogs < 1 {
+		visibleLogs = 1
+	}
+	start, end := visibleRange(len(m.scanLogs), len(m.scanLogs)-1, visibleLogs)
+	for _, log := range m.scanLogs[start:end] {
+		sb.WriteString(truncateText(log, width) + "\n")
+	}
+	return sb.String()
+}
+
 func (m MainModel) renderFooter() string {
+	return m.renderFooterWithWidth(effectiveWidth(m.width))
+}
+
+func (m MainModel) renderFooterWithWidth(width int) string {
 	var sb strings.Builder
 
-	// 帮助文本
-	sb.WriteString(m.renderHelp())
+	sb.WriteString(truncateText(m.renderHelpForWidth(width), width))
 
-	// 处理时显示 HTTP 请求数
 	if m.state > StateRepoSelect {
 		sb.WriteString("\n")
-		sb.WriteString(styleMutedText.Render(fmt.Sprintf("HTTP 请求: %d", m.opts.Client.RequestCount())))
+		sb.WriteString(truncateStyledText(renderHTTPCount(m.opts.Client.RequestCount()), width))
 	}
 
 	return sb.String()
 }
 
 func (m MainModel) renderHelp() string {
+	return m.renderHelpForWidth(effectiveWidth(m.width))
+}
+
+func (m MainModel) renderHelpForWidth(width int) string {
+	narrow := width > 0 && width < 60
 	switch m.state {
 	case StateMenu:
+		if narrow {
+			return "↑/↓ 移动 · ENTER 确认 · Q 退出"
+		}
 		return "↑/↓: 移动  ENTER: 确认  Q: 退出"
 	case StateRepoSelect:
+		if narrow {
+			return "↑/↓ 移动 · SPACE 选择 · D 开始 · ESC 返回"
+		}
 		return "↑/↓: 移动  SPACE: 选择仓库  A: 全选/反选  D: 开始扫描  ESC: 返回菜单  Q: 退出"
 	case StateScanning:
 		return "正在处理，请稍候...  Q: 强制退出"
 	case StateBranchSelect:
 		if m.branchModel.mode == ModeConfirm {
 			return "D: 确认执行删除  ESC: 取消并返回  Q: 退出"
+		}
+		if narrow {
+			return "↑/↓ 移动 · SPACE 选择 · D 删除 · ESC 返回"
 		}
 		return "↑/↓: 移动  SPACE: 选中分支  A: 全选/反选  D: 执行删除  ESC: 返回菜单  Q: 退出"
 	case StateMerge:
@@ -637,17 +700,37 @@ func StartMainTUI(cfg *Config, opts TUIOptions) (Result, error) {
 
 // 兼容旧的 View 方法
 func (m BranchModel) View() string {
-	var s strings.Builder
+	return m.ViewWithSize(defaultTUIWidth, defaultTUIHeight)
+}
 
-	s.WriteString(branchTitleStyle.Render("=== 可删除的分支 ==="))
+func (m BranchModel) ViewWithSize(width, height int) string {
+	width = effectiveWidth(width)
+	if height <= 0 {
+		height = defaultTUIHeight
+	}
+
+	var s strings.Builder
+	s.WriteString(branchTitleStyle.Render(truncateText("=== 可删除的分支 ===", width)))
 	s.WriteString("\n\n")
 
 	if len(m.candidates) == 0 {
-		s.WriteString(styleMutedText.Render("未找到符合条件的分支。"))
+		s.WriteString(styleMutedText.Render(truncateText("未找到符合条件的分支。", width)))
 		return s.String()
 	}
 
-	for i, candidate := range m.candidates {
+	listHeight := height - 5
+	if listHeight < 1 {
+		listHeight = 1
+	}
+	start, end := visibleRange(len(m.candidates), m.cursor, listHeight)
+
+	if start > 0 {
+		s.WriteString(styleMutedText.Render(truncateText(fmt.Sprintf("↑ 还有 %d 个分支", start), width)))
+		s.WriteString("\n")
+	}
+
+	for i := start; i < end; i++ {
+		candidate := m.candidates[i]
 		cursor := "  "
 		if m.cursor == i && m.mode == ModeNormal {
 			cursor = "> "
@@ -658,7 +741,9 @@ func (m BranchModel) View() string {
 			checked = "✓"
 		}
 
-		line := fmt.Sprintf("%s[%s] %s: %s", cursor, checked, candidate.RepoName, candidate.BranchName)
+		prefix := fmt.Sprintf("%s[%s] ", cursor, checked)
+		name := fmt.Sprintf("%s: %s", candidate.RepoName, candidate.BranchName)
+		line := prefix + truncateText(name, width-plainLen(prefix))
 
 		if m.cursor == i && m.mode == ModeNormal {
 			line = branchLineStyle.Render(line)
@@ -668,10 +753,21 @@ func (m BranchModel) View() string {
 		s.WriteString("\n")
 	}
 
-	s.WriteString("\n")
+	if end < len(m.candidates) {
+		s.WriteString(styleMutedText.Render(truncateText(fmt.Sprintf("↓ 还有 %d 个分支", len(m.candidates)-end), width)))
+		s.WriteString("\n")
+	}
 
+	s.WriteString("\n")
+	s.WriteString(m.renderStatus(width))
+
+	return s.String()
+}
+
+func (m BranchModel) renderStatus(width int) string {
 	switch m.mode {
 	case ModeNormal:
+		var s strings.Builder
 		selectedCount := 0
 		for _, selected := range m.selected {
 			if selected {
@@ -679,29 +775,47 @@ func (m BranchModel) View() string {
 			}
 		}
 		if selectedCount > 0 {
-			s.WriteString(branchCountStyle.Render(fmt.Sprintf("已选择 %d 个分支", selectedCount)))
+			s.WriteString(branchCountStyle.Render(truncateText(fmt.Sprintf("已选择 %d 个分支", selectedCount), width)))
 			s.WriteString("\n")
 		}
 
 		if m.deleteDone {
-			s.WriteString(branchDoneStyle.Render(fmt.Sprintf("\n删除完成: 成功 %d, 失败 %d",
-				len(m.result.Success), len(m.result.Failed))))
+			s.WriteString(branchDoneStyle.Render(truncateText(fmt.Sprintf("删除完成: 成功 %d, 失败 %d",
+				len(m.result.Success), len(m.result.Failed)), width)))
 			s.WriteString("\n")
 		}
+		return s.String()
 
 	case ModeConfirm:
-		s.WriteString(branchConfirmStyle.Render("确认删除选中的分支？"))
-		s.WriteString("\n")
+		return branchConfirmStyle.Render(truncateText("确认删除选中的分支？", width)) + "\n"
 
 	case ModeDeleting:
-		barWidth := 40
-		progress := float64(m.deleting) / float64(m.deleteTotal)
-		filled := int(progress * float64(barWidth))
+		return m.renderDeletionProgress(width)
+	}
+	return ""
+}
 
-		bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
-		s.WriteString(branchProgressStyle.Render(fmt.Sprintf("删除进度: [%s] %d/%d", bar, m.deleting, m.deleteTotal)))
-		s.WriteString("\n")
+func (m BranchModel) renderDeletionProgress(width int) string {
+	if m.deleteTotal <= 0 {
+		return branchProgressStyle.Render(truncateText("删除进度: 准备中...", width)) + "\n"
 	}
 
-	return s.String()
+	prefix := "删除进度: ["
+	suffix := fmt.Sprintf("] %d/%d", m.deleting, m.deleteTotal)
+	barWidth := width - plainLen(prefix) - plainLen(suffix)
+	if barWidth < 1 {
+		return branchProgressStyle.Render(truncateText(fmt.Sprintf("删除进度: %d/%d", m.deleting, m.deleteTotal), width)) + "\n"
+	}
+	if barWidth > 40 {
+		barWidth = 40
+	}
+
+	progress := float64(m.deleting) / float64(m.deleteTotal)
+	filled := int(progress * float64(barWidth))
+	if filled > barWidth {
+		filled = barWidth
+	}
+
+	bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
+	return branchProgressStyle.Render(prefix+bar+suffix) + "\n"
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/mattn/go-runewidth"
 )
 
 const (
@@ -43,4 +44,93 @@ func renderScanError(branch string, err error) string {
 
 func renderMergedBranch(branch string) string {
 	return styleSuccessText.Render(fmt.Sprintf("发现已合并分支: %s", branch))
+}
+
+const (
+	defaultTUIWidth  = 80
+	defaultTUIHeight = 24
+)
+
+func effectiveWidth(width int) int {
+	if width > 0 {
+		return width
+	}
+	return defaultTUIWidth
+}
+
+func effectiveHeight(height int) int {
+	if height > 0 {
+		return height
+	}
+	return defaultTUIHeight
+}
+
+func plainLen(s string) int {
+	return lipgloss.Width(s)
+}
+
+func truncateText(s string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return ""
+	}
+	if runewidth.StringWidth(s) <= maxWidth {
+		return s
+	}
+	if maxWidth == 1 {
+		return "…"
+	}
+
+	limit := maxWidth - 1
+	width := 0
+	var out []rune
+	for _, r := range s {
+		rw := runewidth.RuneWidth(r)
+		if width+rw > limit {
+			break
+		}
+		out = append(out, r)
+		width += rw
+	}
+	return string(out) + "…"
+}
+
+func truncateLines(lines []string, maxWidth int) []string {
+	out := make([]string, len(lines))
+	for i, line := range lines {
+		out[i] = truncateStyledText(line, maxWidth)
+	}
+	return out
+}
+
+func truncateStyledText(s string, maxWidth int) string {
+	return lipgloss.NewStyle().MaxWidth(maxWidth).Inline(true).Render(s)
+}
+
+func visibleRange(total, cursor, visible int) (int, int) {
+	if total <= 0 || visible <= 0 {
+		return 0, 0
+	}
+	if visible >= total {
+		return 0, total
+	}
+	if cursor < 0 {
+		cursor = 0
+	}
+	if cursor >= total {
+		cursor = total - 1
+	}
+
+	start := cursor - visible + 1
+	if start < 0 {
+		start = 0
+	}
+	end := start + visible
+	if end > total {
+		end = total
+		start = end - visible
+		if start < 0 {
+			start = 0
+		}
+	}
+	return start, end
 }

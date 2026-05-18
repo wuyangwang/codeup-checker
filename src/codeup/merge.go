@@ -366,3 +366,8 @@ func (m MergeModel) View() string {
 
 	return s.String()
 }
+
+func (m MergeModel) ViewWithSize(width int) string {
+	width = effectiveWidth(width)
+	return strings.Join(truncateLines(strings.Split(m.View(), "\n"), width), "\n")
+}
