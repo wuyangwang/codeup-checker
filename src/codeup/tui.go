@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbletea"
@@ -263,6 +264,7 @@ func runDeletionAsync(opts TUIOptions, toDelete []Candidate, msgChan chan tea.Ms
 	for _, candidate := range toDelete {
 		wg.Add(1)
 		semaphore <- struct{}{}
+		time.Sleep(100 * time.Millisecond)
 		go func(c Candidate) {
 			defer wg.Done()
 			defer func() { <-semaphore }()
@@ -666,6 +668,9 @@ func (m MainModel) renderHelpForWidth(width int) string {
 	case StateRepoSelect:
 		if narrow {
 			return "↑/↓ 移动 · SPACE 选择 · D 开始 · ESC 返回"
+		}
+		if m.mergeMode {
+			return "↑/↓: 移动  SPACE: 选择仓库  D: 开始扫描  ESC: 返回菜单  Q: 退出"
 		}
 		return "↑/↓: 移动  SPACE: 选择仓库  A: 全选/反选  D: 开始扫描  ESC: 返回菜单  Q: 退出"
 	case StateScanning:

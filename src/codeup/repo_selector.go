@@ -78,7 +78,8 @@ func (m RepoSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case key.Matches(msg, keys.Select):
-			if m.allSelected {
+			if m.singleMode {
+			} else if m.allSelected {
 				m.selected = make(map[int]bool)
 				m.allSelected = false
 			} else {
