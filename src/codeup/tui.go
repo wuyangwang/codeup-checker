@@ -454,6 +454,12 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case StateMerge:
 		m.mergeModel, cmd = m.mergeModel.Update(msg)
+		if m.mergeModel.scanTriggered {
+			m.mergeModel.scanTriggered = false
+			m.state = StateScanning
+			selected := []RepoConfig{m.mergeModel.repo}
+			return m, m.startScanning(selected)
+		}
 		if m.mergeModel.done {
 			m.state = StateMenu
 			return m, nil
@@ -718,10 +724,15 @@ func (m MainModel) renderHelpForWidth(width int) string {
 		}
 		return strings.Join([]string{itemMove, itemSpace, itemA, itemD, itemEsc, itemQuit}, "  ")
 	case StateMerge:
-		itemM := m.formatHelpItem("M", "合并/评审", styleKeyAction, narrow)
+		var itemAction string
+		if m.mergeModel.status == MergeStatusDone || m.mergeModel.status == MergeStatusAlreadyMerged {
+			itemAction = m.formatHelpItem("S", "扫描分支", styleKeyAction, narrow)
+		} else {
+			itemAction = m.formatHelpItem("M", "合并/评审", styleKeyAction, narrow)
+		}
 		itemEsc := m.formatHelpItem("ESC", "返回菜单", styleKeyEsc, narrow)
 		itemQuit := m.formatHelpItem("Q", "退出", styleKeyDestructive, narrow)
-		return strings.Join([]string{itemM, itemEsc, itemQuit}, "  ")
+		return strings.Join([]string{itemAction, itemEsc, itemQuit}, "  ")
 	default:
 		return m.formatHelpItem("Q", "退出", styleKeyDestructive, narrow)
 	}

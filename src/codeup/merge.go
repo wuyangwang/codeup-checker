@@ -40,6 +40,7 @@ type mergeKeyMap struct {
 	Merge key.Binding
 	Back  key.Binding
 	Quit  key.Binding
+	Scan  key.Binding
 }
 
 var mergeKeys = mergeKeyMap{
@@ -55,6 +56,10 @@ var mergeKeys = mergeKeyMap{
 		key.WithKeys("q"),
 		key.WithHelp("Q", "退出"),
 	),
+	Scan: key.NewBinding(
+		key.WithKeys("s"),
+		key.WithHelp("S", "扫描分支"),
+	),
 }
 
 type MergeDoneMsg struct {
@@ -69,17 +74,18 @@ type MergeResultMsg struct {
 }
 
 type MergeModel struct {
-	repo         RepoConfig
-	repository   *Repository
-	sourceBranch string
-	targetBranch string
-	status       MergeStatus
-	cr           *ChangeRequest
-	err          error
-	opts         TUIOptions
-	msgChan      chan tea.Msg
-	done         bool
-	existing     bool
+	repo          RepoConfig
+	repository    *Repository
+	sourceBranch  string
+	targetBranch  string
+	status        MergeStatus
+	cr            *ChangeRequest
+	err           error
+	opts          TUIOptions
+	msgChan       chan tea.Msg
+	done          bool
+	existing      bool
+	scanTriggered bool
 }
 
 func NewMergeModel(repo RepoConfig, opts TUIOptions) MergeModel {
@@ -181,6 +187,12 @@ func (m MergeModel) Update(msg tea.Msg) (MergeModel, tea.Cmd) {
 		case key.Matches(msg, mergeKeys.Merge):
 			if m.status == MergeStatusCanMerge || m.status == MergeStatusNeedReview {
 				return m.startMergeOrReview()
+			}
+
+		case key.Matches(msg, mergeKeys.Scan):
+			if m.status == MergeStatusDone || m.status == MergeStatusAlreadyMerged {
+				m.scanTriggered = true
+				return m, nil
 			}
 		}
 
@@ -315,6 +327,8 @@ func (m MergeModel) View() string {
 
 	case MergeStatusAlreadyMerged:
 		s.WriteString(mergeMutedStyle.Render("已经合并过了"))
+		s.WriteString("\n\n")
+		s.WriteString(mergeStatusStyle.Render("按 S 扫描该仓库的已合并分支"))
 		s.WriteString("\n")
 
 	case MergeStatusHasConflict:
@@ -354,6 +368,9 @@ func (m MergeModel) View() string {
 		if m.cr != nil {
 			s.WriteString(fmt.Sprintf("详情: %s\n", m.cr.WebURL))
 		}
+		s.WriteString("\n")
+		s.WriteString(mergeStatusStyle.Render("按 S 扫描该仓库的已合并分支"))
+		s.WriteString("\n")
 
 	case MergeStatusError:
 		s.WriteString(mergeErrorStyle.Render("操作失败"))
