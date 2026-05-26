@@ -538,7 +538,7 @@ func (m MainModel) View() string {
 
 	if m.state > StateRepoSelect {
 		s.WriteString(footerStyle.Width(layout.width).Render(m.renderFooter()))
-	} else if m.state == StateRepoSelect {
+	} else if m.state == StateRepoSelect || m.state == StateMenu {
 		s.WriteString("\n" + m.renderFooter())
 	}
 
@@ -643,7 +643,7 @@ func (m MainModel) renderFooter() string {
 func (m MainModel) renderFooterWithWidth(width int) string {
 	var sb strings.Builder
 
-	sb.WriteString(truncateText(m.renderHelpForWidth(width), width))
+	sb.WriteString(truncateStyledText(m.renderHelpForWidth(width), width))
 
 	if m.state > StateRepoSelect {
 		sb.WriteString("\n")
@@ -657,36 +657,73 @@ func (m MainModel) renderHelp() string {
 	return m.renderHelpForWidth(effectiveWidth(m.width))
 }
 
+func (m MainModel) formatHelpItem(keyText, descText string, keyStyle lipgloss.Style, narrow bool) string {
+	if narrow {
+		return keyStyle.Render(keyText) + " " + styleHelpDesc.Render(descText)
+	}
+	return keyStyle.Render(keyText) + styleHelpDesc.Render(":") + " " + styleHelpDesc.Render(descText)
+}
+
 func (m MainModel) renderHelpForWidth(width int) string {
 	narrow := width > 0 && width < 60
 	switch m.state {
 	case StateMenu:
+		itemMove := m.formatHelpItem("↑/↓", "移动", styleKeyNormal, narrow)
+		itemEnter := m.formatHelpItem("ENTER", "确认", styleKeyAction, narrow)
+		itemQuit := m.formatHelpItem("Q", "退出", styleKeyDestructive, narrow)
 		if narrow {
-			return "↑/↓ 移动 · ENTER 确认 · Q 退出"
+			return strings.Join([]string{itemMove, itemEnter, itemQuit}, " · ")
 		}
-		return "↑/↓: 移动  ENTER: 确认  Q: 退出"
+		return strings.Join([]string{itemMove, itemEnter, itemQuit}, "  ")
 	case StateRepoSelect:
+		itemMove := m.formatHelpItem("↑/↓", "移动", styleKeyNormal, narrow)
+		itemSpace := m.formatHelpItem("SPACE", "选择仓库", styleKeyNormal, narrow)
+		itemA := m.formatHelpItem("A", "全选/反选", styleKeyNormal, narrow)
+		itemD := m.formatHelpItem("D", "开始扫描", styleKeyAction, narrow)
+		itemEsc := m.formatHelpItem("ESC", "返回菜单", styleKeyEsc, narrow)
+		itemQuit := m.formatHelpItem("Q", "退出", styleKeyDestructive, narrow)
+
 		if narrow {
-			return "↑/↓ 移动 · SPACE 选择 · D 开始 · ESC 返回"
+			itemSpaceNarrow := m.formatHelpItem("SPACE", "选择", styleKeyNormal, narrow)
+			itemDNarrow := m.formatHelpItem("D", "开始", styleKeyAction, narrow)
+			itemEscNarrow := m.formatHelpItem("ESC", "返回", styleKeyEsc, narrow)
+			return strings.Join([]string{itemMove, itemSpaceNarrow, itemDNarrow, itemEscNarrow}, " · ")
 		}
 		if m.mergeMode {
-			return "↑/↓: 移动  SPACE: 选择仓库  D: 开始扫描  ESC: 返回菜单  Q: 退出"
+			return strings.Join([]string{itemMove, itemSpace, itemD, itemEsc, itemQuit}, "  ")
 		}
-		return "↑/↓: 移动  SPACE: 选择仓库  A: 全选/反选  D: 开始扫描  ESC: 返回菜单  Q: 退出"
+		return strings.Join([]string{itemMove, itemSpace, itemA, itemD, itemEsc, itemQuit}, "  ")
 	case StateScanning:
-		return "正在处理，请稍候...  Q: 强制退出"
+		itemQuit := m.formatHelpItem("Q", "强制退出", styleKeyDestructive, narrow)
+		return styleHelpDesc.Render("正在处理，请稍候...  ") + itemQuit
 	case StateBranchSelect:
 		if m.branchModel.mode == ModeConfirm {
-			return "D: 确认执行删除  ESC: 取消并返回  Q: 退出"
+			itemD := m.formatHelpItem("D", "确认执行删除", styleKeyDestructive, narrow)
+			itemEsc := m.formatHelpItem("ESC", "取消并返回", styleKeyEsc, narrow)
+			itemQuit := m.formatHelpItem("Q", "退出", styleKeyDestructive, narrow)
+			return strings.Join([]string{itemD, itemEsc, itemQuit}, "  ")
 		}
+		itemMove := m.formatHelpItem("↑/↓", "移动", styleKeyNormal, narrow)
+		itemSpace := m.formatHelpItem("SPACE", "选中分支", styleKeyNormal, narrow)
+		itemA := m.formatHelpItem("A", "全选/反选", styleKeyNormal, narrow)
+		itemD := m.formatHelpItem("D", "执行删除", styleKeyAction, narrow)
+		itemEsc := m.formatHelpItem("ESC", "返回菜单", styleKeyEsc, narrow)
+		itemQuit := m.formatHelpItem("Q", "退出", styleKeyDestructive, narrow)
+
 		if narrow {
-			return "↑/↓ 移动 · SPACE 选择 · D 删除 · ESC 返回"
+			itemSpaceNarrow := m.formatHelpItem("SPACE", "选择", styleKeyNormal, narrow)
+			itemDNarrow := m.formatHelpItem("D", "删除", styleKeyAction, narrow)
+			itemEscNarrow := m.formatHelpItem("ESC", "返回", styleKeyEsc, narrow)
+			return strings.Join([]string{itemMove, itemSpaceNarrow, itemDNarrow, itemEscNarrow}, " · ")
 		}
-		return "↑/↓: 移动  SPACE: 选中分支  A: 全选/反选  D: 执行删除  ESC: 返回菜单  Q: 退出"
+		return strings.Join([]string{itemMove, itemSpace, itemA, itemD, itemEsc, itemQuit}, "  ")
 	case StateMerge:
-		return "M: 合并/评审  ESC: 返回菜单  Q: 退出"
+		itemM := m.formatHelpItem("M", "合并/评审", styleKeyAction, narrow)
+		itemEsc := m.formatHelpItem("ESC", "返回菜单", styleKeyEsc, narrow)
+		itemQuit := m.formatHelpItem("Q", "退出", styleKeyDestructive, narrow)
+		return strings.Join([]string{itemM, itemEsc, itemQuit}, "  ")
 	default:
-		return "Q: 退出"
+		return m.formatHelpItem("Q", "退出", styleKeyDestructive, narrow)
 	}
 }
 

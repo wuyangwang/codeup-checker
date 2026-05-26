@@ -18,12 +18,17 @@ const (
 )
 
 var (
-	styleMutedText   = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
-	styleTitleText   = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorTitle))
-	styleInfoText    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorInfo))
-	styleAccentText  = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorAccent))
-	styleSuccessText = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorSuccess))
-	styleWarnText    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorWarn))
+	styleMutedText      = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
+	styleTitleText      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorTitle))
+	styleInfoText       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorInfo))
+	styleAccentText     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorAccent))
+	styleSuccessText    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorSuccess))
+	styleWarnText       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorWarn))
+	styleKeyNormal      = lipgloss.NewStyle().Foreground(lipgloss.Color(colorAccent)).Bold(true)
+	styleKeyAction      = lipgloss.NewStyle().Foreground(lipgloss.Color(colorSuccess)).Bold(true)
+	styleKeyDestructive = lipgloss.NewStyle().Foreground(lipgloss.Color(colorError)).Bold(true)
+	styleKeyEsc         = lipgloss.NewStyle().Foreground(lipgloss.Color(colorWarn)).Bold(true)
+	styleHelpDesc       = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
 )
 
 func renderHTTPCount(count int64) string {
