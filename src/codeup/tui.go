@@ -408,6 +408,9 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.listenScan()
 
+	case ScanTickMsg:
+		return m, m.listenScan()
+
 	case ScanDoneMsg:
 		if msg.Error != nil {
 			m.err = msg.Error

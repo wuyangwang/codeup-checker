@@ -9,6 +9,144 @@ import (
 	"github.com/charmbracelet/bubbletea"
 )
 
+type RepoScanner struct {
+	client    *CodeupClient
+	config    *Config
+	printLine func(string, ...any)
+	onTick    func()
+}
+
+func (s *RepoScanner) listMergedBranches(ctx context.Context, repo RepoConfig) ([]string, error) {
+	var mergedBranches []string
+	page := int64(1)
+	pageSize := int64(100)
+	targetBranch := s.config.GetTargetBranch()
+
+	repositoryIdentity := repo.Identity()
+	targetCommit, err := s.fetchTargetCommit(ctx, repositoryIdentity, targetBranch)
+	s.onTick()
+	if err != nil {
+		return nil, fmt.Errorf("获取目标分支 %s: %w", targetBranch, err)
+	}
+	scanCtx := branchScanContext{
+		repositoryIdentity: repositoryIdentity,
+		targetBranch:       targetBranch,
+		targetCommit:       targetCommit,
+	}
+
+	compareSem := make(chan struct{}, s.config.GetCompareConcurrency())
+
+	for {
+		select {
+		case <-ctx.Done():
+			return mergedBranches, ctx.Err()
+		default:
+		}
+
+		branches, err := s.client.ListBranches(ctx, repo.Identity(), page, pageSize)
+		s.onTick()
+		if err != nil {
+			return nil, fmt.Errorf("列出分支: %w", err)
+		}
+
+		if len(branches) == 0 {
+			break
+		}
+
+		resultCh := make(chan branchResult, len(branches))
+		var wg sync.WaitGroup
+
+		for _, branch := range branches {
+			if isProtectedBranch(branch.Name, branch) {
+				continue
+			}
+			if isExcludedBranch(branch.Name, s.config.ExcludePatterns) {
+				continue
+			}
+
+			wg.Add(1)
+			compareSem <- struct{}{}
+			go func(b Branch) {
+				defer wg.Done()
+				defer func() { <-compareSem }()
+
+				select {
+				case <-ctx.Done():
+					resultCh <- branchResult{name: b.Name, err: ctx.Err()}
+					return
+				default:
+				}
+
+				merged, err := s.isBranchMerged(ctx, scanCtx, b)
+				s.onTick()
+				resultCh <- branchResult{name: b.Name, merged: merged, err: err}
+			}(branch)
+		}
+
+		done := make(chan struct{})
+		go func() {
+			wg.Wait()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+			close(resultCh)
+		case <-ctx.Done():
+			<-done
+			close(resultCh)
+		}
+
+		for result := range resultCh {
+			if result.err != nil {
+				s.printLine("%s", renderScanError(result.name, result.err))
+				continue
+			}
+			if result.merged {
+				if len(mergedBranches) == 0 {
+					s.printLine("")
+				}
+				mergedBranches = append(mergedBranches, result.name)
+				s.printLine("%s", renderMergedBranch(result.name))
+			}
+		}
+
+		if int64(len(branches)) < pageSize {
+			break
+		}
+		page++
+	}
+
+	return mergedBranches, nil
+}
+
+func (s *RepoScanner) fetchTargetCommit(ctx context.Context, repoIdentity, targetBranch string) (string, error) {
+	branch, err := s.client.GetBranch(ctx, repoIdentity, targetBranch)
+	if err != nil {
+		return "", err
+	}
+	if branch.Commit == nil {
+		return "", nil
+	}
+	return branch.Commit.ID, nil
+}
+
+func (s *RepoScanner) isBranchMerged(ctx context.Context, scanCtx branchScanContext, branch Branch) (bool, error) {
+	if branch.Commit != nil && branch.Commit.ID == scanCtx.targetCommit {
+		return false, nil
+	}
+
+	resp, err := s.client.GetCompareDetail(ctx, scanCtx.repositoryIdentity, scanCtx.targetBranch, branch.Name)
+	if err != nil {
+		return false, fmt.Errorf("比较分支: %w", err)
+	}
+	if resp == nil || len(resp.Commits) > 0 {
+		return false, nil
+	}
+
+	return true, nil
+}
+
 func ScanRepositoriesAsync(ctx context.Context, client *CodeupClient, cfg *Config, repos []RepoConfig, msgChan chan tea.Msg) {
 	var (
 		mu         sync.Mutex
@@ -16,7 +154,6 @@ func ScanRepositoriesAsync(ctx context.Context, client *CodeupClient, cfg *Confi
 		errs       []error
 	)
 
-	// msgMu 保护 msgChan 写入，避免多 goroutine 并发写入竞争
 	var msgMu sync.Mutex
 	sendMsg := func(msg tea.Msg) {
 		msgMu.Lock()
@@ -45,11 +182,18 @@ func ScanRepositoriesAsync(ctx context.Context, client *CodeupClient, cfg *Confi
 
 			sendMsg(ScanProgressMsg{Message: renderRepoChecking(r.DisplayName())})
 
-			localPrintLine := func(format string, a ...any) {
-				sendMsg(ScanProgressMsg{Message: fmt.Sprintf(format, a...)})
+			scanner := &RepoScanner{
+				client: client,
+				config: cfg,
+				printLine: func(format string, a ...any) {
+					sendMsg(ScanProgressMsg{Message: fmt.Sprintf(format, a...)})
+				},
+				onTick: func() {
+					sendMsg(ScanTickMsg{})
+				},
 			}
 
-			branches, err := listMergedBranches(ctx, client, r, cfg, localPrintLine)
+			branches, err := scanner.listMergedBranches(ctx, r)
 			if err != nil {
 				mu.Lock()
 				errs = append(errs, fmt.Errorf("扫描 %s: %w", r.DisplayName(), err))
@@ -84,6 +228,8 @@ type ScanProgressMsg struct {
 	Message string
 }
 
+type ScanTickMsg struct{}
+
 type ScanDoneMsg struct {
 	Candidates []Candidate
 	Error      error
@@ -99,121 +245,6 @@ type branchScanContext struct {
 	repositoryIdentity string
 	targetBranch       string
 	targetCommit       string
-}
-
-func listMergedBranches(ctx context.Context, client *CodeupClient, repo RepoConfig, cfg *Config, printLine func(string, ...any)) ([]string, error) {
-	var mergedBranches []string
-	page := int64(1)
-	pageSize := int64(100)
-	targetBranch := cfg.GetTargetBranch()
-
-	repositoryIdentity := repo.Identity()
-	targetCommit, err := fetchTargetCommit(ctx, client, repositoryIdentity, targetBranch)
-	if err != nil {
-		return nil, fmt.Errorf("获取目标分支 %s: %w", targetBranch, err)
-	}
-	scanCtx := branchScanContext{
-		repositoryIdentity: repositoryIdentity,
-		targetBranch:       targetBranch,
-		targetCommit:       targetCommit,
-	}
-
-	compareSem := make(chan struct{}, cfg.GetCompareConcurrency())
-
-	for {
-		select {
-		case <-ctx.Done():
-			return mergedBranches, ctx.Err()
-		default:
-		}
-
-		branches, err := client.ListBranches(ctx, repo.Identity(), page, pageSize)
-		if err != nil {
-			return nil, fmt.Errorf("列出分支: %w", err)
-		}
-
-		if len(branches) == 0 {
-			break
-		}
-
-		resultCh := make(chan branchResult, len(branches))
-		var wg sync.WaitGroup
-
-		for _, branch := range branches {
-			if isProtectedBranch(branch.Name, branch) {
-				continue
-			}
-			if isExcludedBranch(branch.Name, cfg.ExcludePatterns) {
-				continue
-			}
-
-			wg.Add(1)
-			compareSem <- struct{}{}
-			go func(b Branch) {
-				defer wg.Done()
-				defer func() { <-compareSem }()
-
-				select {
-				case <-ctx.Done():
-					resultCh <- branchResult{name: b.Name, err: ctx.Err()}
-					return
-				default:
-				}
-
-				merged, err := isBranchMerged(ctx, client, scanCtx, b)
-				resultCh <- branchResult{name: b.Name, merged: merged, err: err}
-			}(branch)
-		}
-
-		// 同步等待所有 goroutine 完成，避免泄漏
-		done := make(chan struct{})
-		go func() {
-			wg.Wait()
-			close(done)
-		}()
-
-		// 等待所有比较完成或上下文取消
-		select {
-		case <-done:
-			close(resultCh)
-		case <-ctx.Done():
-			// 等待所有 goroutine 退出后再返回，避免泄漏
-			<-done
-			close(resultCh)
-		}
-
-		for result := range resultCh {
-			if result.err != nil {
-				printLine("%s", renderScanError(result.name, result.err))
-				continue
-			}
-			if result.merged {
-				if len(mergedBranches) == 0 {
-					printLine("")
-				}
-				mergedBranches = append(mergedBranches, result.name)
-				printLine("%s", renderMergedBranch(result.name))
-			}
-		}
-
-		if int64(len(branches)) < pageSize {
-			break
-		}
-		page++
-	}
-
-	return mergedBranches, nil
-}
-
-func fetchTargetCommit(ctx context.Context, client *CodeupClient, repoIdentity, targetBranch string) (string, error) {
-	branch, err := client.GetBranch(ctx, repoIdentity, targetBranch)
-	if err != nil {
-		return "", err
-	}
-	if branch.Commit == nil {
-		return "", nil
-	}
-	return branch.Commit.ID, nil
 }
 
 var protectedNames = map[string]bool{
@@ -251,20 +282,4 @@ func matchPattern(pattern, name string) bool {
 		return len(name) >= len(prefix) && name[:len(prefix)] == prefix
 	}
 	return false
-}
-
-func isBranchMerged(ctx context.Context, client *CodeupClient, scanCtx branchScanContext, branch Branch) (bool, error) {
-	if branch.Commit != nil && branch.Commit.ID == scanCtx.targetCommit {
-		return false, nil
-	}
-
-	resp, err := client.GetCompareDetail(ctx, scanCtx.repositoryIdentity, scanCtx.targetBranch, branch.Name)
-	if err != nil {
-		return false, fmt.Errorf("比较分支: %w", err)
-	}
-	if resp == nil || len(resp.Commits) > 0 {
-		return false, nil
-	}
-
-	return true, nil
 }

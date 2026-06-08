@@ -62,11 +62,15 @@ func (m RepoSelectorModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case key.Matches(msg, keys.Up):
 			if m.cursor > 0 {
 				m.cursor--
+			} else {
+				m.cursor = len(m.repos) - 1
 			}
 
 		case key.Matches(msg, keys.Down):
 			if m.cursor < len(m.repos)-1 {
 				m.cursor++
+			} else {
+				m.cursor = 0
 			}
 
 		case key.Matches(msg, keys.Space):
