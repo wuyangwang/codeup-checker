@@ -35,9 +35,14 @@ type Branch struct {
 	Name      string `json:"name"`
 	Protected any    `json:"protected"`
 	Commit    *struct {
-		ID      string `json:"id"`
-		ShortID string `json:"short_id"`
-		Title   string `json:"title"`
+		ID            string `json:"id"`
+		ShortID       string `json:"short_id"`
+		Title         string `json:"title"`
+		CommittedDate string `json:"committedDate"`
+		AuthoredDate  string `json:"authoredDate"`
+		CreatedAt     string `json:"createdAt"`
+		AuthorName    string `json:"authorName"`
+		AuthorEmail   string `json:"authorEmail"`
 	} `json:"commit"`
 }
 

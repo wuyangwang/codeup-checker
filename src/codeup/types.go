@@ -53,9 +53,11 @@ func (r RepoConfig) DisplayName() string {
 }
 
 type Candidate struct {
-	RepoName   string
-	RepoID     string
-	BranchName string
+	RepoName     string
+	RepoID       string
+	BranchName   string
+	CommitTime   string // 最后提交时间（ISO 格式）
+	CommitAuthor string // 最后提交者
 }
 
 type Result struct {

@@ -51,6 +51,21 @@ func renderMergedBranch(branch string) string {
 	return styleSuccessText.Render(fmt.Sprintf("发现已合并分支: %s", branch))
 }
 
+// formatCommitInfo 格式化提交信息，用于分支列表展示
+func formatCommitInfo(author, commitTime string) string {
+	relTime := RelativeTime(commitTime)
+	if author != "" && relTime != "" {
+		return fmt.Sprintf("(%s, %s)", author, relTime)
+	}
+	if author != "" {
+		return fmt.Sprintf("(%s)", author)
+	}
+	if relTime != "" {
+		return fmt.Sprintf("(%s)", relTime)
+	}
+	return ""
+}
+
 const (
 	defaultTUIWidth  = 80
 	defaultTUIHeight = 24

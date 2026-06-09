@@ -16,8 +16,8 @@ type RepoScanner struct {
 	onTick    func()
 }
 
-func (s *RepoScanner) listMergedBranches(ctx context.Context, repo RepoConfig) ([]string, error) {
-	var mergedBranches []string
+func (s *RepoScanner) listMergedBranches(ctx context.Context, repo RepoConfig) ([]Candidate, error) {
+	var mergedBranches []Candidate
 	page := int64(1)
 	pageSize := int64(100)
 	targetBranch := s.config.GetTargetBranch()
@@ -79,7 +79,12 @@ func (s *RepoScanner) listMergedBranches(ctx context.Context, repo RepoConfig) (
 
 				merged, err := s.isBranchMerged(ctx, scanCtx, b)
 				s.onTick()
-				resultCh <- branchResult{name: b.Name, merged: merged, err: err}
+				br := branchResult{name: b.Name, merged: merged, err: err}
+				if b.Commit != nil {
+					br.commitTime = branchCommitTime(b)
+					br.commitAuthor = b.Commit.AuthorName
+				}
+				resultCh <- br
 			}(branch)
 		}
 
@@ -106,7 +111,13 @@ func (s *RepoScanner) listMergedBranches(ctx context.Context, repo RepoConfig) (
 				if len(mergedBranches) == 0 {
 					s.printLine("")
 				}
-				mergedBranches = append(mergedBranches, result.name)
+				mergedBranches = append(mergedBranches, Candidate{
+					RepoName:     repo.DisplayName(),
+					RepoID:       repo.Identity(),
+					BranchName:   result.name,
+					CommitTime:   result.commitTime,
+					CommitAuthor: result.commitAuthor,
+				})
 				s.printLine("%s", renderMergedBranch(result.name))
 			}
 		}
@@ -193,7 +204,7 @@ func ScanRepositoriesAsync(ctx context.Context, client *CodeupClient, cfg *Confi
 				},
 			}
 
-			branches, err := scanner.listMergedBranches(ctx, r)
+			branchCandidates, err := scanner.listMergedBranches(ctx, r)
 			if err != nil {
 				mu.Lock()
 				errs = append(errs, fmt.Errorf("扫描 %s: %w", r.DisplayName(), err))
@@ -203,13 +214,7 @@ func ScanRepositoriesAsync(ctx context.Context, client *CodeupClient, cfg *Confi
 			}
 
 			mu.Lock()
-			for _, branch := range branches {
-				candidates = append(candidates, Candidate{
-					RepoName:   r.DisplayName(),
-					RepoID:     r.Identity(),
-					BranchName: branch,
-				})
-			}
+			candidates = append(candidates, branchCandidates...)
 			mu.Unlock()
 		}(repo)
 	}
@@ -236,15 +241,31 @@ type ScanDoneMsg struct {
 }
 
 type branchResult struct {
-	name   string
-	merged bool
-	err    error
+	name         string
+	merged       bool
+	err          error
+	commitTime   string
+	commitAuthor string
 }
 
 type branchScanContext struct {
 	repositoryIdentity string
 	targetBranch       string
 	targetCommit       string
+}
+
+// branchCommitTime 从 Branch 中提取最后提交时间，优先使用 committedDate
+func branchCommitTime(b Branch) string {
+	if b.Commit == nil {
+		return ""
+	}
+	if b.Commit.CommittedDate != "" {
+		return b.Commit.CommittedDate
+	}
+	if b.Commit.AuthoredDate != "" {
+		return b.Commit.AuthoredDate
+	}
+	return b.Commit.CreatedAt
 }
 
 var protectedNames = map[string]bool{

@@ -799,8 +799,31 @@ func (m BranchModel) ViewWithSize(width, height int) string {
 
 		prefix := fmt.Sprintf("%s[%s] ", cursor, checked)
 		name := fmt.Sprintf("%s: %s", candidate.RepoName, candidate.BranchName)
-		line := prefix + truncateText(name, width-plainLen(prefix))
 
+		// 构建提交信息后缀
+		commitInfo := formatCommitInfo(candidate.CommitAuthor, candidate.CommitTime)
+
+		availableWidth := width - plainLen(prefix)
+		if commitInfo != "" {
+			// 为提交信息预留空间
+			commitInfoWidth := plainLen(commitInfo) + 2 // 2 for "  " separator
+			nameWidth := availableWidth - commitInfoWidth
+			if nameWidth < 10 {
+				nameWidth = availableWidth
+				commitInfo = "" // 宽度不足时不显示提交信息
+			}
+			if commitInfo != "" {
+				line := prefix + truncateText(name, nameWidth) + "  " + commitInfo
+				if m.cursor == i && m.mode == ModeNormal {
+					line = branchLineStyle.Render(prefix+truncateText(name, nameWidth)) + "  " + styleMutedText.Render(commitInfo)
+				}
+				s.WriteString(line)
+				s.WriteString("\n")
+				continue
+			}
+		}
+
+		line := prefix + truncateText(name, availableWidth)
 		if m.cursor == i && m.mode == ModeNormal {
 			line = branchLineStyle.Render(line)
 		}
