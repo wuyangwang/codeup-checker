@@ -375,7 +375,7 @@ func (m MainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.menuCursor < 1 {
 					m.menuCursor++
 				}
-			case key.Matches(msg, keys.Enter):
+			case key.Matches(msg, keys.Enter), key.Matches(msg, keys.Space):
 				if m.menuCursor == 0 {
 					m.mergeMode = false
 					m.repoModel = NewRepoSelectorModel(m.config.Repositories)
@@ -678,7 +678,7 @@ func (m MainModel) renderHelpForWidth(width int) string {
 	switch m.state {
 	case StateMenu:
 		itemMove := m.formatHelpItem("↑/↓", "移动", styleKeyNormal, narrow)
-		itemEnter := m.formatHelpItem("ENTER", "确认", styleKeyAction, narrow)
+		itemEnter := m.formatHelpItem("ENTER/SPACE", "确认", styleKeyAction, narrow)
 		itemQuit := m.formatHelpItem("Q", "退出", styleKeyDestructive, narrow)
 		if narrow {
 			return strings.Join([]string{itemMove, itemEnter, itemQuit}, " · ")
