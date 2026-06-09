@@ -813,9 +813,9 @@ func (m BranchModel) ViewWithSize(width, height int) string {
 				commitInfo = "" // 宽度不足时不显示提交信息
 			}
 			if commitInfo != "" {
-				line := prefix + truncateText(name, nameWidth) + "  " + commitInfo
+				line := prefix + truncateText(name, nameWidth) + "  " + styleWhiteText.Render(commitInfo)
 				if m.cursor == i && m.mode == ModeNormal {
-					line = branchLineStyle.Render(prefix+truncateText(name, nameWidth)) + "  " + styleMutedText.Render(commitInfo)
+					line = branchLineStyle.Render(prefix+truncateText(name, nameWidth)) + "  " + styleWhiteText.Render(commitInfo)
 				}
 				s.WriteString(line)
 				s.WriteString("\n")

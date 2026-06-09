@@ -19,6 +19,7 @@ const (
 
 var (
 	styleMutedText      = lipgloss.NewStyle().Foreground(lipgloss.Color(colorMuted))
+	styleWhiteText      = lipgloss.NewStyle().Foreground(lipgloss.Color("255"))
 	styleTitleText      = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorTitle))
 	styleInfoText       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorInfo))
 	styleAccentText     = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorAccent))

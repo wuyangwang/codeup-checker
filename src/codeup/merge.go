@@ -68,9 +68,10 @@ type MergeDoneMsg struct {
 }
 
 type MergeResultMsg struct {
-	CR         *ChangeRequest
-	Repository *Repository
-	Existing   bool
+	CR           *ChangeRequest
+	Repository   *Repository
+	Existing     bool
+	CommitsCount int
 }
 
 type MergeModel struct {
@@ -86,6 +87,7 @@ type MergeModel struct {
 	done          bool
 	existing      bool
 	scanTriggered bool
+	commitsCount  int
 }
 
 func NewMergeModel(repo RepoConfig, opts TUIOptions) MergeModel {
@@ -142,33 +144,20 @@ func (m MergeModel) startCreateChangeRequest() tea.Msg {
 
 	repoIdentity := repositoryIdentity(repository)
 
-	commitTitle := ""
-	sourceBranch, err := m.opts.Client.GetBranch(ctx, repoIdentity, m.sourceBranch)
-	if err == nil && sourceBranch.Commit != nil {
-		commitTitle = sourceBranch.Commit.Title
-	}
-
-	title := commitTitle
-	if title == "" {
-		title = fmt.Sprintf("Merge %s to %s", m.sourceBranch, m.targetBranch)
-	}
-
-	req := CreateChangeRequestReq{
-		Title:           title,
-		Description:     fmt.Sprintf("Auto-merge from %s to %s", m.sourceBranch, m.targetBranch),
-		SourceBranch:    m.sourceBranch,
-		TargetBranch:    m.targetBranch,
-		SourceProjectID: repository.ID,
-		TargetProjectID: repository.ID,
-		CreateFrom:      "WEB",
-	}
-
-	cr, err := m.opts.Client.CreateChangeRequest(ctx, repoIdentity, req)
+	// 使用分支比对代替立即创建合并请求
+	compare, err := m.opts.Client.GetCompareDetail(ctx, repoIdentity, m.targetBranch, m.sourceBranch)
 	if err != nil {
-		return MergeDoneMsg{Success: false, Error: err}
+		return MergeDoneMsg{Success: false, Error: fmt.Errorf("分支对比失败: %w", err)}
 	}
 
-	return MergeResultMsg{CR: cr, Repository: repository}
+	commitsCount := len(compare.Commits)
+
+	return MergeResultMsg{
+		CR:           nil,
+		Repository:   repository,
+		Existing:     false,
+		CommitsCount: commitsCount,
+	}
 }
 
 func (m MergeModel) Update(msg tea.Msg) (MergeModel, tea.Cmd) {
@@ -205,6 +194,7 @@ func (m MergeModel) Update(msg tea.Msg) (MergeModel, tea.Cmd) {
 		m.cr = msg.CR
 		m.repository = msg.Repository
 		m.existing = msg.Existing
+		m.commitsCount = msg.CommitsCount
 		m.status = m.evaluateStatus(msg.CR)
 		return m, nil
 
@@ -222,6 +212,13 @@ func (m MergeModel) Update(msg tea.Msg) (MergeModel, tea.Cmd) {
 }
 
 func (m MergeModel) evaluateStatus(cr *ChangeRequest) MergeStatus {
+	if cr == nil {
+		if m.commitsCount == 0 {
+			return MergeStatusNoChanges
+		}
+		return MergeStatusCanMerge
+	}
+
 	state := cr.Status
 	if state == "" {
 		state = cr.State
@@ -259,7 +256,6 @@ func (m MergeModel) evaluateStatus(cr *ChangeRequest) MergeStatus {
 }
 
 func (m MergeModel) startMergeOrReview() (MergeModel, tea.Cmd) {
-	needReview := m.status == MergeStatusNeedReview
 	m.status = MergeStatusMerging
 	m.msgChan = make(chan tea.Msg, 2)
 
@@ -267,12 +263,46 @@ func (m MergeModel) startMergeOrReview() (MergeModel, tea.Cmd) {
 		ctx := context.Background()
 		repoID := repositoryIdentity(m.repository)
 
+		cr := m.cr
+		if cr == nil {
+			// 1. 创建合并请求
+			commitTitle := ""
+			sourceBranch, err := m.opts.Client.GetBranch(ctx, repoID, m.sourceBranch)
+			if err == nil && sourceBranch.Commit != nil {
+				commitTitle = sourceBranch.Commit.Title
+			}
+
+			title := commitTitle
+			if title == "" {
+				title = fmt.Sprintf("Merge %s to %s", m.sourceBranch, m.targetBranch)
+			}
+
+			req := CreateChangeRequestReq{
+				Title:           title,
+				Description:     fmt.Sprintf("Auto-merge from %s to %s", m.sourceBranch, m.targetBranch),
+				SourceBranch:    m.sourceBranch,
+				TargetBranch:    m.targetBranch,
+				SourceProjectID: m.repository.ID,
+				TargetProjectID: m.repository.ID,
+				CreateFrom:      "WEB",
+			}
+
+			var createErr error
+			cr, createErr = m.opts.Client.CreateChangeRequest(ctx, repoID, req)
+			if createErr != nil {
+				m.msgChan <- MergeDoneMsg{Success: false, Error: fmt.Errorf("创建合并请求失败: %w", createErr)}
+				return
+			}
+		}
+
+		// 检查是否需要评审
+		needReview := cr.Status == "UNDER_REVIEW" || !cr.AllRequirementsPass
 		if needReview {
 			reviewReq := ReviewChangeRequestReq{
 				ReviewOpinion: "PASS",
 			}
-			if err := m.opts.Client.ReviewChangeRequest(ctx, repoID, m.cr.LocalID, reviewReq); err != nil {
-				m.msgChan <- MergeDoneMsg{Success: false, Error: fmt.Errorf("review failed: %w", err)}
+			if err := m.opts.Client.ReviewChangeRequest(ctx, repoID, cr.LocalID, reviewReq); err != nil {
+				m.msgChan <- MergeDoneMsg{Success: false, Error: fmt.Errorf("评审合并请求失败: %w", err)}
 				return
 			}
 		}
@@ -281,9 +311,9 @@ func (m MergeModel) startMergeOrReview() (MergeModel, tea.Cmd) {
 			MergeType:          "no-fast-forward",
 			RemoveSourceBranch: false,
 		}
-		_, err := m.opts.Client.MergeChangeRequest(ctx, repoID, m.cr.LocalID, mergeReq)
+		_, err := m.opts.Client.MergeChangeRequest(ctx, repoID, cr.LocalID, mergeReq)
 		if err != nil {
-			m.msgChan <- MergeDoneMsg{Success: false, Error: fmt.Errorf("merge failed: %w", err)}
+			m.msgChan <- MergeDoneMsg{Success: false, Error: fmt.Errorf("合并失败: %w", err)}
 			return
 		}
 
@@ -310,7 +340,7 @@ func (m MergeModel) View() string {
 
 	switch m.status {
 	case MergeStatusIdle, MergeStatusCreating:
-		s.WriteString(mergeStatusStyle.Render("正在创建合并请求..."))
+		s.WriteString(mergeStatusStyle.Render("正在检查分支对比状态..."))
 		s.WriteString("\n")
 
 	case MergeStatusChecking:
@@ -328,7 +358,7 @@ func (m MergeModel) View() string {
 	case MergeStatusAlreadyMerged:
 		s.WriteString(mergeMutedStyle.Render("已经合并过了"))
 		s.WriteString("\n\n")
-		s.WriteString(mergeStatusStyle.Render("按 S 扫描该仓库的已合并分支"))
+		s.WriteString(mergeStatusStyle.Render("按 S 扫描该仓库 of 已合并分支"))
 		s.WriteString("\n")
 
 	case MergeStatusHasConflict:
@@ -344,6 +374,8 @@ func (m MergeModel) View() string {
 		if m.cr != nil {
 			s.WriteString(fmt.Sprintf("领先 %d 个提交\n", m.cr.Ahead))
 			s.WriteString(fmt.Sprintf("详情: %s\n", m.cr.WebURL))
+		} else {
+			s.WriteString(fmt.Sprintf("领先 %d 个提交\n", m.commitsCount))
 		}
 		s.WriteString("\n")
 		s.WriteString(mergeStatusStyle.Render("按 M 执行合并"))
@@ -354,6 +386,8 @@ func (m MergeModel) View() string {
 		if m.cr != nil {
 			s.WriteString(fmt.Sprintf("领先 %d 个提交\n", m.cr.Ahead))
 			s.WriteString(fmt.Sprintf("详情: %s\n", m.cr.WebURL))
+		} else {
+			s.WriteString(fmt.Sprintf("领先 %d 个提交\n", m.commitsCount))
 		}
 		s.WriteString("\n")
 		s.WriteString(mergeStatusStyle.Render("按 M 评审并合并"))
