@@ -27,7 +27,7 @@ go build -o codeup-checker ./cmd/codeup-checker/
 
 ## 配置
 
-首次运行会自动创建配置文件 `~/.config/codeup-checker/config.yaml`：
+首次运行会自动创建配置文件 `~/.codeup-checker/config.yaml`：
 
 ```yaml
 # 组织 ID（可选，优先使用环境变量 CODEUP_ORG_ID）

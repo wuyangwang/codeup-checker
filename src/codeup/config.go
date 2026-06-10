@@ -47,12 +47,12 @@ func GetOrganizationId(cfg *Config) string {
 }
 
 func GetConfigPath() (string, error) {
-	configDir, err := os.UserConfigDir()
+	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		return "", fmt.Errorf("获取配置目录失败: %w", err)
+		return "", fmt.Errorf("获取用户主目录失败: %w", err)
 	}
 
-	appDir := filepath.Join(configDir, "codeup-checker")
+	appDir := filepath.Join(homeDir, ".codeup-checker")
 	if err := os.MkdirAll(appDir, 0755); err != nil {
 		return "", fmt.Errorf("创建配置目录失败: %w", err)
 	}

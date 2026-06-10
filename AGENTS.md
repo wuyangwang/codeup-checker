@@ -93,7 +93,7 @@ go vet ./...
 - `DRY_RUN`: 设置为 "true" 启用干运行模式
 
 ### 配置文件
-配置文件位置：`~/.config/codeup-checker/config.yaml`
+配置文件位置：`~/.codeup-checker/config.yaml`
 
 ```yaml
 organizationId: "your_org_id"
@@ -141,7 +141,7 @@ A: 修改 `src/codeup/scanner.go` 中的 `protectedNames` map。
 A: 修改 `src/codeup/scanner.go` 中 `executeDeletions` 函数的 semaphore 缓冲区大小。
 
 ### Q: 配置文件在哪里？
-A: 运行程序会自动创建，或手动创建在 `~/.config/codeup-checker/config.yaml`。
+A: 运行程序会自动创建，或手动创建在 `~/.codeup-checker/config.yaml`。
 
 ## 相关链接
 
