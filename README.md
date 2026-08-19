@@ -13,6 +13,8 @@
 
 ## 安装
 
+支持Mac/Linux/Windows系统，见[release页面](https://github.com/wuyangwang/codeup-checker/releases)
+
 ```bash
 go install codeup-checker/cmd/codeup-checker@latest
 ```
